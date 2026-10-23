@@ -1,36 +1,85 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 調整くん（choseikun）
 
-## Getting Started
+荒井硝子様向け **訪問調査の日程調整**（顧客パブリック予約）。  
+Next.js（App Router）＋間検索エンジン。仕様の正本は `../docs/REQUIREMENTS_現地調査日程調整.md`。
 
-First, run the development server:
+| フェーズ | 内容 | 状態 |
+|----------|------|------|
+| Phase 1 | 顧客画面 P-01〜P-03 ＋ 間検索API ＋ Calendar/Maps 基盤 | **モック稼働** |
+| Phase 2 | `/admin`・職人・予約一覧・URL発行・`/r/{token}` | **モック実装済** |
 
-```bash
+既存の社内・施工日程（Streamlit）は `../nittei_chosei_system`。本リポは訪問調査専用。
+
+---
+
+## 開発環境の起動（最短）
+
+前提: Node.js 20+、このフォルダで作業。
+
+```powershell
+cd e:\cursor\01_日程調整システム\choseikun
+npm install
+Copy-Item .env.example .env.local   # 初回のみ（無ければ）
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+ブラウザ: [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| URL | 内容 |
+|-----|------|
+| `/` | 顧客予約（デモ直アクセス） |
+| `/r/{token}` | 発行URL（確定後は内容表示／キャンセル後は再調整） |
+| `/admin` | 社内ホーム |
+| `/admin/book` | 社内・代理入力（全社員／任意絞り込み） |
+| `/admin/workers` | 職人マスタ |
+| `/admin/bookings` | 予約一覧・オペキャンセル |
+| `/admin/links` | 顧客用URL発行 |
+| `/admin/settings` | 事務所・稼働・バッファ等 |
+| `POST /api/slots` | 間検索（`linkToken` 可） |
+| `POST /api/bookings` | 予約確定（`data/bookings.json` に保存） |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+既定は **`CHOSEIKUN_USE_MOCK=true`**（職人・カレンダー・移動時間はモック）。  
+APIキー無しで UI と間検索ロジックを開発できます。
 
-## Learn More
+詳細手順・接続切替は [`docs/DEV_SETUP.md`](docs/DEV_SETUP.md)。
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## スクリプト
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| コマンド | 用途 |
+|----------|------|
+| `npm run dev` | 開発サーバ |
+| `npm run build` | 本番ビルド確認 |
+| `npm run start` | ビルド後の起動 |
+| `npm run lint` | ESLint |
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## ディレクトリ（要点）
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+app/
+  page.tsx              # 顧客デモ
+  r/[token]/           # 発行URL
+  admin/                # 社内（職人・予約・URL・設定）
+  api/                  # slots / bookings / workers / booking-links / links
+components/booking-flow.tsx
+lib/
+  store.ts              # workers / links / bookings のローカルJSON
+  gap-search/           # 間検索エンジン
+  providers/mock.ts
+data/                   # settings.json ＋ 実行時JSON（workers等）
+```
+
+---
+
+## 次の実装（本番接続）
+
+1. `.env.local` に Firebase / Calendar OAuth / Maps キーを入れる  
+2. `CHOSEIKUN_USE_MOCK=false`  
+3. Distance Matrix・Calendar・Firestore プロバイダ実装  
+4. 二重予約防止・確定メール・前日リマインド  
+5. P-04 社内代理入力  
+
+認証は既存 `nittei_chosei_system` の流用を想定（仕様書 §8）。

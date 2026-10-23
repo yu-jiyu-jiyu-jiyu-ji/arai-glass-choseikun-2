@@ -1,0 +1,28 @@
+{
+  "officeAddress": "東京都杉並区阿佐谷北３丁目４３−１１",
+  "officePostalCode": "166-0001",
+  "officeBuilding": "AGビル 1F",
+  "officeLatLng": { "lat": 35.7048, "lng": 139.6362 },
+  "workdays": {
+    "mon": true,
+    "tue": true,
+    "wed": true,
+    "thu": true,
+    "fri": true,
+    "sat": true,
+    "sun": false
+  },
+  "workdayStartHour": 9,
+  "workdayEndHour": 17,
+  "lunchStartHour": 12,
+  "lunchEndHour": 13,
+  "surveyMinutes": 45,
+  "bufferMinutes": 15,
+  "slotIntervalMinutes": 60,
+  "detourThresholdMinutes": 20,
+  "initialSearchDays": 7,
+  "extendSearchDays": 7,
+  "maxSearchDays": 21,
+  "recommendedCount": 3,
+  "requireTwoWorkers": true
+}

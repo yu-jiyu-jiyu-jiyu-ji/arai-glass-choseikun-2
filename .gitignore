@@ -30,8 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files（実値は commit しない。.env.example のみ追跡可）
+.env
+.env.*
+!.env.example
 
 # vercel
 .vercel
@@ -39,3 +41,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 実行時ストア（モック永続化）。settings.json は初期値として追跡
+/data/workers.json
+/data/booking-links.json
+/data/bookings.json
