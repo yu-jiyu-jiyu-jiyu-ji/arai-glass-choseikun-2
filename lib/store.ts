@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { randomBytes } from "crypto";
 import { APP_CONFIG } from "./config";
+import { CACHE_KEYS, cached, cacheDelete } from "./cache";
 import { MOCK_WORKERS } from "./providers/mock";
 import * as fsStore from "./providers/firestore-store";
 import type { Booking, BookingLink, BookingRequest, Worker } from "./types";
@@ -35,8 +36,17 @@ function newToken() {
   return randomBytes(12).toString("base64url");
 }
 
-/** 職人マスタ */
-export async function loadWorkers(): Promise<Worker[]> {
+function invalidateWorkers() {
+  cacheDelete(CACHE_KEYS.workers);
+}
+function invalidateLinks() {
+  cacheDelete(CACHE_KEYS.links);
+}
+function invalidateBookings() {
+  cacheDelete(CACHE_KEYS.bookings);
+}
+
+async function loadWorkersUncached(): Promise<Worker[]> {
   if (useFirestore()) return fsStore.fsLoadWorkers();
 
   const existing = await readJson<Worker[] | null>(WORKERS_PATH, null);
@@ -47,20 +57,30 @@ export async function loadWorkers(): Promise<Worker[]> {
   return [...MOCK_WORKERS];
 }
 
+/** 職人マスタ（既定 60秒キャッシュ） */
+export async function loadWorkers(): Promise<Worker[]> {
+  return cached(CACHE_KEYS.workers, loadWorkersUncached);
+}
+
 export async function saveWorkers(workers: Worker[]): Promise<Worker[]> {
   if (useFirestore()) {
     throw new Error("Firestore モードでは一括 saveWorkers は未対応です。upsertWorker を使ってください。");
   }
   await writeJson(WORKERS_PATH, workers);
+  invalidateWorkers();
   return workers;
 }
 
 export async function upsertWorker(
   input: Partial<Worker> & { name: string; googleEmail: string },
 ): Promise<Worker> {
-  if (useFirestore()) return fsStore.fsUpsertWorker(input);
+  if (useFirestore()) {
+    const worker = await fsStore.fsUpsertWorker(input);
+    invalidateWorkers();
+    return worker;
+  }
 
-  const workers = await loadWorkers();
+  const workers = await loadWorkersUncached();
   if (input.id) {
     const idx = workers.findIndex((w) => w.id === input.id);
     if (idx < 0) throw new Error("職人が見つかりません");
@@ -72,6 +92,7 @@ export async function upsertWorker(
     };
     workers[idx] = next;
     await writeJson(WORKERS_PATH, workers);
+    invalidateWorkers();
     return next;
   }
   const worker: Worker = {
@@ -85,19 +106,28 @@ export async function upsertWorker(
   };
   workers.push(worker);
   await writeJson(WORKERS_PATH, workers);
+  invalidateWorkers();
   return worker;
 }
 
-export async function loadBookingLinks(): Promise<BookingLink[]> {
+async function loadBookingLinksUncached(): Promise<BookingLink[]> {
   if (useFirestore()) return fsStore.fsLoadBookingLinks();
   return readJson<BookingLink[]>(LINKS_PATH, []);
+}
+
+export async function loadBookingLinks(): Promise<BookingLink[]> {
+  return cached(CACHE_KEYS.links, loadBookingLinksUncached);
 }
 
 export async function createBookingLink(input: {
   workerIds: string[];
   note?: string;
 }): Promise<BookingLink> {
-  if (useFirestore()) return fsStore.fsCreateBookingLink(input);
+  if (useFirestore()) {
+    const link = await fsStore.fsCreateBookingLink(input);
+    invalidateLinks();
+    return link;
+  }
 
   const workers = await loadWorkers();
   const activeIds = new Set(workers.filter((w) => w.active).map((w) => w.id));
@@ -116,31 +146,42 @@ export async function createBookingLink(input: {
     createdAt: new Date().toISOString(),
     active: true,
   };
-  const links = await loadBookingLinks();
+  const links = await loadBookingLinksUncached();
   links.unshift(link);
   await writeJson(LINKS_PATH, links);
+  invalidateLinks();
   return link;
 }
 
 export async function getBookingLinkByToken(token: string): Promise<BookingLink | null> {
-  if (useFirestore()) return fsStore.fsGetBookingLinkByToken(token);
+  if (useFirestore()) {
+    const links = await loadBookingLinks();
+    return links.find((l) => l.token === token && l.active) ?? null;
+  }
   const links = await loadBookingLinks();
   return links.find((l) => l.token === token && l.active) ?? null;
 }
 
-export async function loadBookings(): Promise<Booking[]> {
+async function loadBookingsUncached(): Promise<Booking[]> {
   if (useFirestore()) return fsStore.fsLoadBookings();
   return readJson<Booking[]>(BOOKINGS_PATH, []);
 }
 
+export async function loadBookings(): Promise<Booking[]> {
+  return cached(CACHE_KEYS.bookings, loadBookingsUncached);
+}
+
 export async function getConfirmedBookingForLink(token: string): Promise<Booking | null> {
-  if (useFirestore()) return fsStore.fsGetConfirmedBookingForLink(token);
   const bookings = await loadBookings();
   return bookings.find((b) => b.linkToken === token && b.status === "confirmed") ?? null;
 }
 
 export async function createBooking(req: BookingRequest): Promise<Booking> {
-  if (useFirestore()) return fsStore.fsCreateBooking(req);
+  if (useFirestore()) {
+    const booking = await fsStore.fsCreateBooking(req);
+    invalidateBookings();
+    return booking;
+  }
 
   if (req.linkToken) {
     const link = await getBookingLinkByToken(req.linkToken);
@@ -171,16 +212,21 @@ export async function createBooking(req: BookingRequest): Promise<Booking> {
     cancelledAt: null,
   };
 
-  const bookings = await loadBookings();
+  const bookings = await loadBookingsUncached();
   bookings.unshift(booking);
   await writeJson(BOOKINGS_PATH, bookings);
+  invalidateBookings();
   return booking;
 }
 
 export async function cancelBooking(id: string): Promise<Booking> {
-  if (useFirestore()) return fsStore.fsCancelBooking(id);
+  if (useFirestore()) {
+    const booking = await fsStore.fsCancelBooking(id);
+    invalidateBookings();
+    return booking;
+  }
 
-  const bookings = await loadBookings();
+  const bookings = await loadBookingsUncached();
   const idx = bookings.findIndex((b) => b.id === id);
   if (idx < 0) throw new Error("予約が見つかりません");
   if (bookings[idx].status === "cancelled") return bookings[idx];
@@ -190,5 +236,20 @@ export async function cancelBooking(id: string): Promise<Booking> {
     cancelledAt: new Date().toISOString(),
   };
   await writeJson(BOOKINGS_PATH, bookings);
+  invalidateBookings();
   return bookings[idx];
+}
+
+/** キャッシュを温める（起動後・管理画面入場時など） */
+export async function warmStoreCache(): Promise<{
+  workers: number;
+  bookings: number;
+  links: number;
+}> {
+  const [workers, bookings, links] = await Promise.all([
+    loadWorkers(),
+    loadBookings(),
+    loadBookingLinks(),
+  ]);
+  return { workers: workers.length, bookings: bookings.length, links: links.length };
 }
