@@ -5,8 +5,8 @@ Next.js（App Router）＋間検索エンジン。仕様の正本は `../docs/RE
 
 | フェーズ | 内容 | 状態 |
 |----------|------|------|
-| Phase 1 | 顧客画面 P-01〜P-03 ＋ 間検索API ＋ Calendar/Maps 基盤 | **モック稼働** |
-| Phase 2 | `/admin`・職人・予約一覧・URL発行・`/r/{token}` | **モック実装済** |
+| Phase 1 | 顧客画面 P-01〜P-03 ＋ 間検索API ＋ Calendar/Maps 基盤 | 間検索はモック／台帳は Firestore 可 |
+| Phase 2 | `/admin`・職人・予約一覧・URL発行・`/r/{token}` | **実装済**（台帳 Firestore 接続可） |
 
 既存の社内・施工日程（Streamlit）は `../nittei_chosei_system`。本リポは訪問調査専用。
 
@@ -38,8 +38,8 @@ npm run dev
 | `POST /api/slots` | 間検索（`linkToken` 可） |
 | `POST /api/bookings` | 予約確定（`data/bookings.json` に保存） |
 
-既定は **`CHOSEIKUN_USE_MOCK=true`**（職人・カレンダー・移動時間はモック）。  
-APIキー無しで UI と間検索ロジックを開発できます。
+台帳は `.env.local` の **`CHOSEIKUN_DATA_BACKEND=firestore`** で会社の Firebase（職人名簿共有＋予約／URL新規）に接続。  
+カレンダー予定・移動時間は当面 **`CHOSEIKUN_USE_MOCK=true`** のまま。接続確認: `GET /api/health`。
 
 詳細手順・接続切替は [`docs/DEV_SETUP.md`](docs/DEV_SETUP.md)。
 

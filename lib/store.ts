@@ -1,13 +1,17 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { randomBytes } from "crypto";
+import { APP_CONFIG } from "./config";
 import { MOCK_WORKERS } from "./providers/mock";
+import * as fsStore from "./providers/firestore-store";
 import type { Booking, BookingLink, BookingRequest, Worker } from "./types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const WORKERS_PATH = path.join(DATA_DIR, "workers.json");
 const LINKS_PATH = path.join(DATA_DIR, "booking-links.json");
 const BOOKINGS_PATH = path.join(DATA_DIR, "bookings.json");
+
+const useFirestore = () => APP_CONFIG.dataBackend === "firestore";
 
 async function readJson<T>(filePath: string, fallback: T): Promise<T> {
   try {
@@ -31,8 +35,10 @@ function newToken() {
   return randomBytes(12).toString("base64url");
 }
 
-/** 職人マスタ（無ければモックから初期化） */
+/** 職人マスタ */
 export async function loadWorkers(): Promise<Worker[]> {
+  if (useFirestore()) return fsStore.fsLoadWorkers();
+
   const existing = await readJson<Worker[] | null>(WORKERS_PATH, null);
   if (existing && Array.isArray(existing) && existing.length > 0) {
     return existing;
@@ -42,11 +48,18 @@ export async function loadWorkers(): Promise<Worker[]> {
 }
 
 export async function saveWorkers(workers: Worker[]): Promise<Worker[]> {
+  if (useFirestore()) {
+    throw new Error("Firestore モードでは一括 saveWorkers は未対応です。upsertWorker を使ってください。");
+  }
   await writeJson(WORKERS_PATH, workers);
   return workers;
 }
 
-export async function upsertWorker(input: Partial<Worker> & { name: string; googleEmail: string }): Promise<Worker> {
+export async function upsertWorker(
+  input: Partial<Worker> & { name: string; googleEmail: string },
+): Promise<Worker> {
+  if (useFirestore()) return fsStore.fsUpsertWorker(input);
+
   const workers = await loadWorkers();
   if (input.id) {
     const idx = workers.findIndex((w) => w.id === input.id);
@@ -58,7 +71,7 @@ export async function upsertWorker(input: Partial<Worker> & { name: string; goog
       calendarId: input.calendarId ?? workers[idx].calendarId,
     };
     workers[idx] = next;
-    await saveWorkers(workers);
+    await writeJson(WORKERS_PATH, workers);
     return next;
   }
   const worker: Worker = {
@@ -71,11 +84,12 @@ export async function upsertWorker(input: Partial<Worker> & { name: string; goog
     active: input.active ?? true,
   };
   workers.push(worker);
-  await saveWorkers(workers);
+  await writeJson(WORKERS_PATH, workers);
   return worker;
 }
 
 export async function loadBookingLinks(): Promise<BookingLink[]> {
+  if (useFirestore()) return fsStore.fsLoadBookingLinks();
   return readJson<BookingLink[]>(LINKS_PATH, []);
 }
 
@@ -83,6 +97,8 @@ export async function createBookingLink(input: {
   workerIds: string[];
   note?: string;
 }): Promise<BookingLink> {
+  if (useFirestore()) return fsStore.fsCreateBookingLink(input);
+
   const workers = await loadWorkers();
   const activeIds = new Set(workers.filter((w) => w.active).map((w) => w.id));
   const workerIds =
@@ -107,20 +123,25 @@ export async function createBookingLink(input: {
 }
 
 export async function getBookingLinkByToken(token: string): Promise<BookingLink | null> {
+  if (useFirestore()) return fsStore.fsGetBookingLinkByToken(token);
   const links = await loadBookingLinks();
   return links.find((l) => l.token === token && l.active) ?? null;
 }
 
 export async function loadBookings(): Promise<Booking[]> {
+  if (useFirestore()) return fsStore.fsLoadBookings();
   return readJson<Booking[]>(BOOKINGS_PATH, []);
 }
 
 export async function getConfirmedBookingForLink(token: string): Promise<Booking | null> {
+  if (useFirestore()) return fsStore.fsGetConfirmedBookingForLink(token);
   const bookings = await loadBookings();
   return bookings.find((b) => b.linkToken === token && b.status === "confirmed") ?? null;
 }
 
 export async function createBooking(req: BookingRequest): Promise<Booking> {
+  if (useFirestore()) return fsStore.fsCreateBooking(req);
+
   if (req.linkToken) {
     const link = await getBookingLinkByToken(req.linkToken);
     if (!link) throw new Error("ご案内URLが無効です");
@@ -157,6 +178,8 @@ export async function createBooking(req: BookingRequest): Promise<Booking> {
 }
 
 export async function cancelBooking(id: string): Promise<Booking> {
+  if (useFirestore()) return fsStore.fsCancelBooking(id);
+
   const bookings = await loadBookings();
   const idx = bookings.findIndex((b) => b.id === id);
   if (idx < 0) throw new Error("予約が見つかりません");

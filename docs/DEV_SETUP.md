@@ -22,7 +22,16 @@ npm run dev
 - 社内: http://localhost:3000/admin  
 - 設定: http://localhost:3000/admin/settings  
 
-`.env.local` の `CHOSEIKUN_USE_MOCK=true` のままなら、Google / Firebase キーは不要です。
+台帳を会社の Firebase につなぐ場合（推奨・鍵は nittei と同じ）:
+
+```
+CHOSEIKUN_DATA_BACKEND=firestore
+CHOSEIKUN_USE_MOCK=true
+GOOGLE_APPLICATION_CREDENTIALS=（nittei のサービスアカウント JSON の絶対パス）
+```
+
+接続確認: http://localhost:3000/api/health  
+カレンダー／地図の本番接続はまだモックのままです。
 
 ### 動作確認の目安
 
