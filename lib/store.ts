@@ -101,6 +101,7 @@ export async function upsertWorker(
     googleEmail: input.googleEmail,
     oauthLinked: input.oauthLinked ?? false,
     surveyMain: input.surveyMain ?? false,
+    rank: input.rank ?? "",
     calendarId: input.calendarId ?? `cal-${Date.now()}`,
     active: input.active ?? true,
   };

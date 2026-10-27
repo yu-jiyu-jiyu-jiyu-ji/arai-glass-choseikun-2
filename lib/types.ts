@@ -15,6 +15,8 @@ export type Worker = {
   oauthLinked: boolean;
   /** 調査メインで動いている人 */
   surveyMain: boolean;
+  /** 職人ランク（設定の workerRankOptions から選択） */
+  rank: string;
   calendarId: string;
   active: boolean;
 };

@@ -8,7 +8,9 @@ export type AppSettings = {
   officeBuilding: string;
   officeLatLng: LatLng;
   workdays: Record<WorkdayKey, boolean>;
+  /** 就業開始時（0-23）。候補はこの時刻以降のみ */
   workdayStartHour: number;
+  /** 就業終了時（0-23）。枠の終了がこの時刻を超えない */
   workdayEndHour: number;
   lunchStartHour: number;
   lunchEndHour: number;
@@ -21,6 +23,12 @@ export type AppSettings = {
   maxSearchDays: number;
   recommendedCount: number;
   requireTwoWorkers: boolean;
+  /** 職人ランクの選択肢（例: A,B,C,1） */
+  workerRankOptions: string[];
+  /** 国民の祝日を候補日から除外 */
+  excludeNationalHolidays: boolean;
+  /** 個別休日 YYYY-MM-DD */
+  individualHolidays: string[];
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -50,6 +58,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxSearchDays: 21,
   recommendedCount: 3,
   requireTwoWorkers: true,
+  workerRankOptions: ["A", "B", "C", "1"],
+  excludeNationalHolidays: true,
+  individualHolidays: [],
 };
 
 export const WORKDAY_LABELS: { key: WorkdayKey; label: string }[] = [

@@ -41,6 +41,7 @@ export function mapWorkerDoc(id: string, data: Record<string, unknown>): Worker 
     googleEmail: email,
     oauthLinked: Boolean(data.google_refresh_token || data.oauthLinked),
     surveyMain: isSurveyMain(data),
+    rank: String(data.rank ?? "").trim(),
     calendarId: calendarId || "primary",
     active: data.is_active !== false && data.active !== false,
   };
@@ -73,6 +74,7 @@ export async function fsUpsertWorker(
       calendar_id: input.calendarId ?? prev.calendar_id ?? input.googleEmail,
       is_active: input.active ?? prev.is_active ?? true,
       survey_main: input.surveyMain ?? prev.survey_main ?? false,
+      rank: input.rank ?? prev.rank ?? "",
       role: input.surveyMain ? "調査メイン" : (prev.role ?? ""),
     };
     // oauthLinked はトークン有無で見る。手入力 true だけではトークンは作らない
@@ -90,7 +92,7 @@ export async function fsUpsertWorker(
     is_active: input.active ?? true,
     survey_main: input.surveyMain ?? false,
     role: input.surveyMain ? "調査メイン" : "",
-    rank: "",
+    rank: input.rank ?? "",
     note: "choseikun",
     display_order: listed.length + 1,
     fixed_days_off: [] as number[],

@@ -24,5 +24,8 @@
   "extendSearchDays": 7,
   "maxSearchDays": 21,
   "recommendedCount": 3,
-  "requireTwoWorkers": true
+  "requireTwoWorkers": true,
+  "workerRankOptions": ["A", "B", "C", "1"],
+  "excludeNationalHolidays": true,
+  "individualHolidays": []
 }

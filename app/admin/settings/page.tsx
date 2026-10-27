@@ -100,8 +100,12 @@ export default function SettingsPage() {
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="mb-4 text-lg font-bold">稼働曜日・時刻</h2>
+          <h2 className="mb-2 text-lg font-bold">就業時間（候補検索）</h2>
+          <p className="mb-4 text-sm leading-relaxed text-slate-600">
+            この時間帯に収まる枠だけを候補として表示します。枠の終了時刻が終了時を超える開始時刻は出しません。
+          </p>
           <div className="mb-4 flex flex-wrap gap-2">
+            <span className="w-full text-sm font-bold text-slate-700">稼働曜日（定休はオフ）</span>
             {WORKDAY_LABELS.map(({ key, label }) => (
               <button
                 key={key}
@@ -163,6 +167,61 @@ export default function SettingsPage() {
               />
             </label>
           </div>
+          <p className="mt-3 text-sm font-bold text-blue-900">
+            現在の就業帯: {String(settings.workdayStartHour).padStart(2, "0")}:00 〜{" "}
+            {String(settings.workdayEndHour).padStart(2, "0")}:00
+          </p>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="mb-2 text-lg font-bold">休日設定（候補検索の除外日）</h2>
+          <p className="mb-4 text-sm text-slate-600">
+            定休曜日に加え、祝日・個別休日は候補日から自動で外します。
+          </p>
+          <label className="mb-4 flex items-center gap-3 text-sm font-bold">
+            <input
+              type="checkbox"
+              className="h-5 w-5 accent-blue-900"
+              checked={settings.excludeNationalHolidays}
+              onChange={(e) =>
+                setSettings({ ...settings, excludeNationalHolidays: e.target.checked })
+              }
+            />
+            国民の祝日を自動除外
+          </label>
+          <label className="block text-sm font-bold">
+            個別休日（YYYY-MM-DD を1行に1つ）
+            <textarea
+              className="mt-1 min-h-28 w-full rounded-xl border-2 border-slate-300 px-3 py-3 font-mono text-sm"
+              value={(settings.individualHolidays ?? []).join("\n")}
+              onChange={(e) => {
+                const lines = e.target.value
+                  .split(/\r?\n/)
+                  .map((s) => s.trim())
+                  .filter(Boolean);
+                setSettings({ ...settings, individualHolidays: lines });
+              }}
+              placeholder={"2026-01-02\n2026-12-30"}
+            />
+          </label>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="mb-2 text-lg font-bold">職人ランク候補</h2>
+          <p className="mb-3 text-sm text-slate-600">
+            職人マスタのランク選択肢です。カンマ区切り（例: A, B, C, 1）
+          </p>
+          <input
+            className="w-full rounded-xl border-2 border-slate-300 px-3 py-3"
+            value={(settings.workerRankOptions ?? []).join(", ")}
+            onChange={(e) => {
+              const opts = e.target.value
+                .split(/[,、]/)
+                .map((s) => s.trim())
+                .filter(Boolean);
+              setSettings({ ...settings, workerRankOptions: opts });
+            }}
+          />
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5">

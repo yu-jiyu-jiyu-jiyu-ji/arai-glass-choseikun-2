@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import type { Worker } from "@/lib/types";
+import { DEFAULT_SETTINGS } from "@/lib/settings-shared";
 
 const emptyForm = {
   name: "",
   googleEmail: "",
+  rank: "",
   surveyMain: false,
   oauthLinked: false,
   active: true,
@@ -14,6 +16,7 @@ const emptyForm = {
 
 export default function WorkersPage() {
   const [workers, setWorkers] = useState<Worker[]>([]);
+  const [rankOptions, setRankOptions] = useState<string[]>(DEFAULT_SETTINGS.workerRankOptions);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -24,10 +27,14 @@ export default function WorkersPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/workers");
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "読み込み失敗");
-      setWorkers(data.workers);
+      const [wRes, sRes] = await Promise.all([fetch("/api/workers"), fetch("/api/settings")]);
+      const wData = await wRes.json();
+      const sData = await sRes.json();
+      if (!wRes.ok) throw new Error(wData.error || "読み込み失敗");
+      setWorkers(wData.workers);
+      if (Array.isArray(sData.workerRankOptions) && sData.workerRankOptions.length > 0) {
+        setRankOptions(sData.workerRankOptions);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "読み込み失敗");
     } finally {
@@ -44,6 +51,7 @@ export default function WorkersPage() {
     setForm({
       name: w.name,
       googleEmail: w.googleEmail,
+      rank: w.rank ?? "",
       surveyMain: w.surveyMain,
       oauthLinked: w.oauthLinked,
       active: w.active,
@@ -93,7 +101,7 @@ export default function WorkersPage() {
       <div>
         <h1 className="text-2xl font-bold">職人マスタ</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Googleメールと OAuth 連携状態を管理します（モックでは連携フラグを手入力）。
+          Googleメール・ランク・OAuth 連携状態を管理します。ランク候補は共通設定で変更できます。
         </p>
       </div>
 
@@ -116,6 +124,21 @@ export default function WorkersPage() {
               value={form.googleEmail}
               onChange={(e) => setForm({ ...form, googleEmail: e.target.value })}
             />
+          </label>
+          <label className="text-sm font-bold sm:col-span-2">
+            職人ランク
+            <select
+              className="mt-1 w-full rounded-xl border-2 border-slate-300 px-3 py-2"
+              value={form.rank}
+              onChange={(e) => setForm({ ...form, rank: e.target.value })}
+            >
+              <option value="">（未設定）</option>
+              {rankOptions.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
         <div className="mt-4 flex flex-wrap gap-4 text-sm font-bold">
@@ -176,6 +199,7 @@ export default function WorkersPage() {
           <thead className="border-b border-slate-200 bg-slate-50 text-slate-600">
             <tr>
               <th className="px-4 py-3 font-bold">氏名</th>
+              <th className="px-4 py-3 font-bold">ランク</th>
               <th className="px-4 py-3 font-bold">Google</th>
               <th className="px-4 py-3 font-bold">属性</th>
               <th className="px-4 py-3 font-bold">操作</th>
@@ -185,6 +209,7 @@ export default function WorkersPage() {
             {workers.map((w) => (
               <tr key={w.id}>
                 <td className="px-4 py-3 font-bold text-slate-900">{w.name}</td>
+                <td className="px-4 py-3 font-bold text-slate-800">{w.rank || "—"}</td>
                 <td className="px-4 py-3 text-slate-700">{w.googleEmail}</td>
                 <td className="px-4 py-3">
                   <span className="mr-2 inline-block rounded bg-slate-100 px-2 py-0.5 text-xs font-bold">

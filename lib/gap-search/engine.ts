@@ -1,5 +1,5 @@
 import type { AppSettings } from "../settings-shared";
-import { workdayKeyFromDate } from "../settings-shared";
+import { isSearchableDay } from "../holidays";
 import type { CalendarEvent, LatLng, PublicSlot, SlotCandidate, Worker } from "../types";
 import { TravelTimeCache, getDriveMinutes } from "./travel";
 
@@ -19,11 +19,10 @@ function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && bStart < aEnd;
 }
 
-function isWorkday(d: Date, settings: AppSettings) {
-  return settings.workdays[workdayKeyFromDate(d)];
-}
-
-/** 稼働日内の候補開始時刻を列挙（60分刻み） */
+/**
+ * 就業時間内の候補開始時刻のみ列挙。
+ * 「開始＋調査時間が終了時刻を超える」枠は出さない。
+ */
 function candidateStartsOnDay(day: Date, settings: AppSettings): Date[] {
   const starts: Date[] = [];
   const {
@@ -35,9 +34,10 @@ function candidateStartsOnDay(day: Date, settings: AppSettings): Date[] {
     surveyMinutes,
   } = settings;
 
+  const dayEndMinutes = workdayEndHour * 60;
   for (
     let minutes = workdayStartHour * 60;
-    minutes + surveyMinutes <= workdayEndHour * 60;
+    minutes + surveyMinutes <= dayEndMinutes;
     minutes += slotIntervalMinutes
   ) {
     const h = Math.floor(minutes / 60);
@@ -112,7 +112,7 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
   const endExclusive = addDays(startOfDay(input.fromDate), settings.maxSearchDays);
 
   for (let day = startOfDay(input.fromDate); day < endExclusive; day = addDays(day, 1)) {
-    if (!isWorkday(day, settings)) continue;
+    if (!isSearchableDay(day, settings)) continue;
     daysScanned += 1;
 
     for (const start of candidateStartsOnDay(day, settings)) {
