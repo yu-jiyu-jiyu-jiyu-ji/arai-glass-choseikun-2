@@ -254,6 +254,24 @@ export async function cancelBooking(id: string): Promise<Booking> {
   return bookings[idx];
 }
 
+export async function saveBookingCalendarEventIds(
+  bookingId: string,
+  calendarEventIds: Record<string, string>,
+): Promise<void> {
+  if (Object.keys(calendarEventIds).length === 0) return;
+  if (useFirestore()) {
+    await fsStore.fsSaveBookingCalendarEventIds(bookingId, calendarEventIds);
+    invalidateBookings();
+    return;
+  }
+  const bookings = await loadBookingsUncached();
+  const idx = bookings.findIndex((b) => b.id === bookingId);
+  if (idx < 0) return;
+  bookings[idx] = { ...bookings[idx], calendarEventIds };
+  await writeJson(BOOKINGS_PATH, bookings);
+  invalidateBookings();
+}
+
 /** キャッシュを温める（起動後・管理画面入場時など） */
 export async function warmStoreCache(): Promise<{
   workers: number;

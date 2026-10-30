@@ -83,6 +83,8 @@ export type Booking = {
   end: string;
   /** 確定時に選出した担当（基本2人） */
   workerIds: string[];
+  /** 職人ID → Google Calendar イベントID（キャンセル時に削除） */
+  calendarEventIds?: Record<string, string>;
   createdAt: string;
   cancelledAt: string | null;
 };

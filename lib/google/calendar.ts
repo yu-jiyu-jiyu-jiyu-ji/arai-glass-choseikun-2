@@ -140,3 +140,57 @@ export async function fetchWorkerEvents(opts: {
     workerId: opts.worker.id,
   });
 }
+
+export type CalendarWriteInput = {
+  summary: string;
+  description: string;
+  location: string;
+  startIso: string;
+  endIso: string;
+};
+
+/** primary カレンダーへ予定を作成。作成した event id を返す */
+export async function insertCalendarEvent(
+  refreshToken: string,
+  input: CalendarWriteInput,
+): Promise<string> {
+  const { accessToken } = await refreshAccessToken(refreshToken);
+  const url = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      summary: input.summary,
+      description: input.description,
+      location: input.location,
+      // start/end は予約APIの ISO（オフセット付き）をそのまま使う
+      start: { dateTime: input.startIso },
+      end: { dateTime: input.endIso },
+    }),
+  });
+  const data = (await res.json()) as { id?: string; error?: { message?: string } };
+  if (!res.ok || !data.id) {
+    throw new Error(data.error?.message || `Calendar insert ${res.status}`);
+  }
+  return data.id;
+}
+
+export async function deleteCalendarEvent(
+  refreshToken: string,
+  eventId: string,
+): Promise<void> {
+  const { accessToken } = await refreshAccessToken(refreshToken);
+  const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`;
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  // 404 = 既に消えている → 成功扱い
+  if (!res.ok && res.status !== 404 && res.status !== 410) {
+    const text = await res.text();
+    throw new Error(`Calendar delete ${res.status}: ${text.slice(0, 200)}`);
+  }
+}

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { APP_CONFIG } from "@/lib/config";
-import { createBooking, loadBookings } from "@/lib/store";
+import { pushBookingToCalendars } from "@/lib/providers/calendar-sync";
+import { createBooking, loadBookings, saveBookingCalendarEventIds } from "@/lib/store";
 import type { BookingRequest, BookingResponse } from "@/lib/types";
 
 export async function GET(req: Request) {
@@ -51,6 +52,14 @@ export async function POST(req: Request) {
     }
 
     const booking = await createBooking(body);
+
+    // 予約保存後に担当カレンダーへ書き込み（失敗しても予約は確定のまま）
+    try {
+      const calendarEventIds = await pushBookingToCalendars(booking);
+      await saveBookingCalendarEventIds(booking.id, calendarEventIds);
+    } catch (e) {
+      console.error("[api/bookings] calendar sync failed", e);
+    }
 
     const response: BookingResponse = {
       id: booking.id,

@@ -182,6 +182,7 @@ export async function fsLoadBookings(): Promise<Booking[]> {
       start: String(x.start),
       end: String(x.end),
       workerIds: (x.workerIds as string[]) ?? [],
+      calendarEventIds: (x.calendarEventIds as Record<string, string> | undefined) ?? undefined,
       createdAt: String(x.createdAt ?? ""),
       cancelledAt: (x.cancelledAt as string | null) ?? null,
     } as Booking;
@@ -256,7 +257,11 @@ export async function fsCancelBooking(id: string): Promise<Booking> {
   if (!doc.exists) throw new Error("予約が見つかりません");
   const prev = doc.data()!;
   if (prev.status === "cancelled") {
-    return { ...(prev as Booking), id };
+    return {
+      ...(prev as Booking),
+      id,
+      calendarEventIds: (prev.calendarEventIds as Record<string, string> | undefined) ?? undefined,
+    };
   }
   const next = {
     ...prev,
@@ -264,5 +269,17 @@ export async function fsCancelBooking(id: string): Promise<Booking> {
     cancelledAt: new Date().toISOString(),
   };
   await ref.set(next, { merge: true });
-  return { ...(next as Booking), id };
+  return {
+    ...(next as Booking),
+    id,
+    calendarEventIds: (next.calendarEventIds as Record<string, string> | undefined) ?? undefined,
+  };
+}
+
+export async function fsSaveBookingCalendarEventIds(
+  bookingId: string,
+  calendarEventIds: Record<string, string>,
+): Promise<void> {
+  const db = assertDb();
+  await db.collection(BOOKINGS).doc(bookingId).set({ calendarEventIds }, { merge: true });
 }
