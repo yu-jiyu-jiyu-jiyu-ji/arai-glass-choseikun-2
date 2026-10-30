@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Copy, Loader2 } from "lucide-react";
+import { Check, Copy, Loader2, Trash2 } from "lucide-react";
 import type { BookingLink, Worker } from "@/lib/types";
 
 export default function LinksPage() {
@@ -11,6 +11,7 @@ export default function LinksPage() {
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [origin, setOrigin] = useState("");
@@ -70,6 +71,27 @@ export default function LinksPage() {
     await navigator.clipboard.writeText(url);
     setCopied(token);
     setTimeout(() => setCopied(null), 2000);
+  };
+
+  const remove = async (link: BookingLink) => {
+    const label = link.note?.trim() || link.token;
+    if (!window.confirm(`このURLを削除しますか？\n（${label}）\n削除後はお客様が開けなくなります。`)) {
+      return;
+    }
+    setDeletingId(link.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/booking-links/${encodeURIComponent(link.id)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "削除に失敗しました");
+      setLinks((prev) => prev.filter((l) => l.id !== link.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "削除に失敗しました");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const nameOf = (id: string) => workers.find((w) => w.id === id)?.name ?? id;
@@ -154,21 +176,32 @@ export default function LinksPage() {
                 <p className="mt-1 text-xs text-slate-600">
                   候補: {link.workerIds.map(nameOf).join("・")}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => void copyUrl(link.token)}
-                  className="mt-3 inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-bold text-slate-800 hover:bg-slate-50"
-                >
-                  {copied === link.token ? (
-                    <>
-                      <Check className="h-4 w-4 text-green-600" /> コピーしました
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-4 w-4" /> URLをコピー
-                    </>
-                  )}
-                </button>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void copyUrl(link.token)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-bold text-slate-800 hover:bg-slate-50"
+                  >
+                    {copied === link.token ? (
+                      <>
+                        <Check className="h-4 w-4 text-green-600" /> コピーしました
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4" /> URLをコピー
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void remove(link)}
+                    disabled={deletingId === link.id}
+                    className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm font-bold text-red-700 hover:bg-red-50 disabled:opacity-60"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {deletingId === link.id ? "削除中…" : "削除"}
+                  </button>
+                </div>
               </article>
             );
           })

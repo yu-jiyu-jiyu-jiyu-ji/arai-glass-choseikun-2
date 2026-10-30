@@ -142,6 +142,14 @@ export async function fsCreateBookingLink(input: {
   return link;
 }
 
+export async function fsDeleteBookingLink(id: string): Promise<void> {
+  const db = assertDb();
+  const ref = db.collection(LINKS).doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) throw new Error("URLが見つかりません");
+  await ref.delete();
+}
+
 export async function fsGetBookingLinkByToken(token: string): Promise<BookingLink | null> {
   const db = assertDb();
   const snap = await db.collection(LINKS).where("token", "==", token).limit(5).get();

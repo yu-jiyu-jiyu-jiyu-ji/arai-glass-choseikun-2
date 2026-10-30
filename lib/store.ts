@@ -163,6 +163,19 @@ export async function getBookingLinkByToken(token: string): Promise<BookingLink 
   return links.find((l) => l.token === token && l.active) ?? null;
 }
 
+export async function deleteBookingLink(id: string): Promise<void> {
+  if (useFirestore()) {
+    await fsStore.fsDeleteBookingLink(id);
+    invalidateLinks();
+    return;
+  }
+  const links = await loadBookingLinksUncached();
+  const next = links.filter((l) => l.id !== id);
+  if (next.length === links.length) throw new Error("URLが見つかりません");
+  await writeJson(LINKS_PATH, next);
+  invalidateLinks();
+}
+
 async function loadBookingsUncached(): Promise<Booking[]> {
   if (useFirestore()) return fsStore.fsLoadBookings();
   return readJson<Booking[]>(BOOKINGS_PATH, []);
