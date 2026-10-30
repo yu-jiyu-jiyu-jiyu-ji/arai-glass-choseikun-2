@@ -56,19 +56,23 @@ function findAnchorA(
   office: LatLng,
   settings: AppSettings,
 ): { at: Date; latLng: LatLng } {
+  const dayStart = jstWallOnSameDay(slotStart, settings.workdayStartHour, 0);
+  // 前日の現地は持ち越さない（翌朝は事務所起点）。短い空きが不当に潰れるのを防ぐ
   const sites = siteEvents(events)
-    .filter((e) => e.end <= slotStart)
+    .filter((e) => e.end <= slotStart && e.end.getTime() >= dayStart.getTime())
     .sort((a, b) => b.end.getTime() - a.end.getTime());
   if (sites[0]?.latLng) return { at: sites[0].end, latLng: sites[0].latLng };
-  return {
-    at: jstWallOnSameDay(slotStart, settings.workdayStartHour, 0),
-    latLng: office,
-  };
+  return { at: dayStart, latLng: office };
 }
 
-function findAnchorB(events: CalendarEvent[], slotEnd: Date): { at: Date; latLng: LatLng } | null {
+function findAnchorB(
+  events: CalendarEvent[],
+  slotEnd: Date,
+  settings: AppSettings,
+): { at: Date; latLng: LatLng } | null {
+  const dayEnd = jstWallOnSameDay(slotEnd, settings.workdayEndHour, 0);
   const sites = siteEvents(events)
-    .filter((e) => e.start >= slotEnd)
+    .filter((e) => e.start >= slotEnd && e.start.getTime() <= dayEnd.getTime())
     .sort((a, b) => a.start.getTime() - b.start.getTime());
   if (sites[0]?.latLng) return { at: sites[0].start, latLng: sites[0].latLng };
   return null;
@@ -87,7 +91,8 @@ export type GapSearchInput = {
 /**
  * 段階探索つき間検索。
  * - requireTwoWorkers 時は同時刻に2人空いている枠のみ採用
- * - 担当優先度は同時刻のタイブレーカー（早い枠を殺さない）
+ * - TimeRex 用に最低 initialSearchDays は必ず走査（打ち切らない）
+ * - おすすめが揃っていなければ maxSearchDays まで延長
  * - 時刻・日付は Asia/Tokyo
  */
 export async function runGapSearch(input: GapSearchInput): Promise<{
@@ -102,8 +107,6 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
   const now = new Date();
 
   let daysScanned = 0;
-  /** おすすめ枠が揃ったあとの延長探索の起点（searchable day カウント） */
-  let extendFromScanned: number | null = null;
   const rangeStart = startOfJstDay(input.fromDate);
   const endExclusive = addJstDays(rangeStart, settings.maxSearchDays);
 
@@ -112,7 +115,6 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
     daysScanned += 1;
 
     for (const start of candidateStartsOnDay(day, settings)) {
-      // 現在時刻より前の枠は出さない（TimeRex 同様）
       if (start.getTime() <= now.getTime()) continue;
       const end = new Date(start.getTime() + settings.surveyMinutes * 60_000);
 
@@ -130,7 +132,7 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
         if (isBlocked(events, start, end)) continue;
 
         const a = findAnchorA(events, start, office, settings);
-        const b = findAnchorB(events, end);
+        const b = findAnchorB(events, end, settings);
 
         const travelIn = await getDriveMinutes(
           a.latLng,
@@ -150,11 +152,9 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
         if (deltaT >= settings.detourThresholdMinutes) continue;
 
         const needed = travelIn + settings.surveyMinutes + travelOut + settings.bufferMinutes;
-
         const windowEnd = b
           ? b.at
           : jstWallOnSameDay(start, settings.workdayEndHour, 0);
-
         const available = (windowEnd.getTime() - a.at.getTime()) / 60_000;
         if (needed > available) continue;
 
@@ -194,25 +194,36 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
       }
     }
 
-    const earliestEnough = [...candidates]
-      .sort((a, b) => a.start.getTime() - b.start.getTime())
-      .slice(0, settings.recommendedCount);
+    const enough =
+      candidates.length >= settings.recommendedCount &&
+      [...candidates]
+        .sort((a, b) => a.start.getTime() - b.start.getTime())
+        .slice(0, settings.recommendedCount).length >= settings.recommendedCount;
 
-    // 段階探索:
-    // 1) 最低 initialSearchDays は見る
-    // 2) おすすめ枠が揃ったら、カレンダー用に extendSearchDays 分だけ延長して止める
-    //    （「初回空きが遠い日」でも、その直後の日を切り捨てない）
-    if (earliestEnough.length >= settings.recommendedCount) {
-      if (daysScanned >= settings.initialSearchDays) {
-        if (extendFromScanned === null) extendFromScanned = daysScanned;
-        if (daysScanned - extendFromScanned >= settings.extendSearchDays) {
-          break;
-        }
-      }
+    // 初期探索日数は必ず走査（TimeRex 用）。揃っていればそこで打ち切り。
+    // 不足なら maxSearchDays まで継続。
+    if (daysScanned >= settings.initialSearchDays && enough) {
+      break;
     }
   }
 
   return { candidates, daysScanned };
+}
+
+/** fromDate から searchable な日を count 日分（JST） */
+export function listSearchableDateKeys(
+  fromDate: Date,
+  count: number,
+  settings: AppSettings,
+  hardMaxCalendarDays = 60,
+): string[] {
+  const keys: string[] = [];
+  let day = startOfJstDay(fromDate);
+  for (let i = 0; i < hardMaxCalendarDays && keys.length < count; i += 1) {
+    if (isSearchableDay(day, settings)) keys.push(jstDateKey(day));
+    day = addJstDays(day, 1);
+  }
+  return keys;
 }
 
 export function toPublicResponse(
@@ -220,6 +231,12 @@ export function toPublicResponse(
   daysScanned: number,
   workersConsidered: number,
   recommendedCount: number,
+  opts?: {
+    fromDate?: Date;
+    settings?: AppSettings;
+    /** TimeRex に必ず並べる searchable 日数（直近から）。缺け日は空き0 */
+    calendarSearchableDays?: number;
+  },
 ): {
   recommended: PublicSlot[];
   days: { date: string; slots: PublicSlot[] }[];
@@ -250,9 +267,26 @@ export function toPublicResponse(
     byDate.set(key, list);
   }
 
-  const days = [...byDate.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, slots]) => ({ date, slots }));
+  const days: { date: string; slots: PublicSlot[] }[] = [];
+  const seen = new Set<string>();
+
+  // 直近から初期探索日数分は、空き0でも必ず行を作る（TimeRex）
+  if (opts?.fromDate && opts.settings && (opts.calendarSearchableDays ?? 0) > 0) {
+    for (const key of listSearchableDateKeys(
+      opts.fromDate,
+      opts.calendarSearchableDays!,
+      opts.settings,
+    )) {
+      days.push({ date: key, slots: byDate.get(key) ?? [] });
+      seen.add(key);
+    }
+  }
+
+  // それ以降に見つかった空き日も追加
+  for (const [date, slots] of [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    if (seen.has(date)) continue;
+    days.push({ date, slots });
+  }
 
   return { recommended, days, searchedDays: daysScanned, workersConsidered };
 }

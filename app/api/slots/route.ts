@@ -85,6 +85,12 @@ export async function POST(req: Request) {
       daysScanned,
       workers.length,
       settings.recommendedCount,
+      {
+        fromDate: new Date(),
+        settings,
+        // TimeRex: おすすめが遠くても直近から初期探索日数分は必ず並べる
+        calendarSearchableDays: settings.initialSearchDays,
+      },
     );
 
     const response: SearchSlotsResponse = {
