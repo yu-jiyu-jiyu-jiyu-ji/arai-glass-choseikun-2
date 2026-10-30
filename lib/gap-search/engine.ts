@@ -102,6 +102,8 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
   const now = new Date();
 
   let daysScanned = 0;
+  /** おすすめ枠が揃ったあとの延長探索の起点（searchable day カウント） */
+  let extendFromScanned: number | null = null;
   const rangeStart = startOfJstDay(input.fromDate);
   const endExclusive = addJstDays(rangeStart, settings.maxSearchDays);
 
@@ -192,12 +194,21 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
       }
     }
 
-    const earliestThree = [...candidates]
+    const earliestEnough = [...candidates]
       .sort((a, b) => a.start.getTime() - b.start.getTime())
       .slice(0, settings.recommendedCount);
 
-    if (daysScanned >= settings.initialSearchDays && earliestThree.length >= settings.recommendedCount) {
-      break;
+    // 段階探索:
+    // 1) 最低 initialSearchDays は見る
+    // 2) おすすめ枠が揃ったら、カレンダー用に extendSearchDays 分だけ延長して止める
+    //    （「初回空きが遠い日」でも、その直後の日を切り捨てない）
+    if (earliestEnough.length >= settings.recommendedCount) {
+      if (daysScanned >= settings.initialSearchDays) {
+        if (extendFromScanned === null) extendFromScanned = daysScanned;
+        if (daysScanned - extendFromScanned >= settings.extendSearchDays) {
+          break;
+        }
+      }
     }
   }
 
