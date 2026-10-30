@@ -63,6 +63,8 @@ export type SearchSlotsResponse = {
     mode: "mock" | "live";
     searchedDays: number;
     workersConsidered: number;
+    /** 職人ごとに読み込んだカレンダー予定数（切り分け用） */
+    eventsCountByWorker?: Record<string, number>;
   };
 };
 

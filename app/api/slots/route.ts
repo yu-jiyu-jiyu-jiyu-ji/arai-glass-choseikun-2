@@ -66,6 +66,11 @@ export async function POST(req: Request) {
       settings.maxSearchDays,
     );
 
+    const eventsCountByWorker: Record<string, number> = {};
+    for (const w of workers) {
+      eventsCountByWorker[w.id] = eventsByWorker.get(w.id)?.length ?? 0;
+    }
+
     const { candidates, daysScanned } = await runGapSearch({
       customerLatLng,
       workers,
@@ -89,6 +94,7 @@ export async function POST(req: Request) {
         mode: APP_CONFIG.useMockProviders ? "mock" : "live",
         searchedDays: result.searchedDays,
         workersConsidered: result.workersConsidered,
+        eventsCountByWorker,
       },
     };
 

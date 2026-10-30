@@ -1,5 +1,6 @@
 import { APP_CONFIG } from "../config";
 import { getDriveMinutes, TravelTimeCache } from "../gap-search/travel";
+import { addJstDays, startOfJstDay } from "../time/jst";
 import type { CalendarEvent, LatLng, Worker } from "../types";
 import { fetchWorkerEvents } from "../google/calendar";
 import { fetchDriveMinutes, geocodeAddress, mapsConfigured } from "../google/maps";
@@ -35,10 +36,8 @@ export async function loadEventsByWorker(
     return buildMockEvents();
   }
 
-  const timeMin = new Date(fromDate);
-  timeMin.setHours(0, 0, 0, 0);
-  const timeMax = new Date(timeMin);
-  timeMax.setDate(timeMax.getDate() + maxSearchDays + 2);
+  const timeMin = startOfJstDay(fromDate);
+  const timeMax = addJstDays(timeMin, maxSearchDays + 2);
 
   const map = new Map<string, CalendarEvent[]>();
   await Promise.all(
