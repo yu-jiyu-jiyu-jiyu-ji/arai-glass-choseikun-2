@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { APP_CONFIG } from "@/lib/config";
 import { getDb } from "@/lib/firebase";
+import { oauthConfigured } from "@/lib/google/oauth";
+import { mapsConfigured } from "@/lib/google/maps";
 import { loadWorkers } from "@/lib/store";
 
 export async function GET() {
@@ -9,6 +11,8 @@ export async function GET() {
     ok: true,
     dataBackend: backend,
     calendarTravelMode: APP_CONFIG.useMockProviders ? "mock" : "live",
+    oauthConfigured: oauthConfigured(),
+    mapsConfigured: mapsConfigured(),
   };
 
   try {

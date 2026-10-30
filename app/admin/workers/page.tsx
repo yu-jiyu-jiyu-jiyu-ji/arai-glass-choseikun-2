@@ -150,13 +150,9 @@ export default function WorkersPage() {
             />
             調査メイン
           </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={form.oauthLinked}
-              onChange={(e) => setForm({ ...form, oauthLinked: e.target.checked })}
-            />
-            OAuth連携済み
+          <label className="flex items-center gap-2 text-slate-500" title="一覧の「Calendar連携」から設定します">
+            <input type="checkbox" checked={form.oauthLinked} disabled readOnly />
+            OAuth連携済み（連携ボタンで更新）
           </label>
           <label className="flex items-center gap-2">
             <input
@@ -228,7 +224,7 @@ export default function WorkersPage() {
                     {w.oauthLinked ? "OAuth済" : "未連携"}
                   </span>
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 space-x-3">
                   <button
                     type="button"
                     onClick={() => startEdit(w)}
@@ -236,6 +232,12 @@ export default function WorkersPage() {
                   >
                     編集
                   </button>
+                  <a
+                    href={`/api/oauth/calendar/start?workerId=${encodeURIComponent(w.id)}`}
+                    className="font-bold text-emerald-800 underline-offset-2 hover:underline"
+                  >
+                    {w.oauthLinked ? "再連携" : "Calendar連携"}
+                  </a>
                 </td>
               </tr>
             ))}

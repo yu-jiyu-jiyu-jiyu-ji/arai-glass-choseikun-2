@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { APP_CONFIG } from "@/lib/config";
 import { runGapSearch, toPublicResponse } from "@/lib/gap-search/engine";
-import { buildMockEvents, hasDetailedAddress, mockGeocode } from "@/lib/providers/mock";
+import { hasDetailedAddress } from "@/lib/providers/mock";
+import {
+  createDriveFetcher,
+  loadEventsByWorker,
+  resolveCustomerLatLng,
+} from "@/lib/providers/live";
 import { loadSettings } from "@/lib/settings";
 import { getBookingLinkByToken, loadWorkers } from "@/lib/store";
 import type { SearchSlotsRequest, SearchSlotsResponse } from "@/lib/types";
@@ -32,18 +37,34 @@ export async function POST(req: Request) {
       poolIds = link.workerIds;
     }
 
-    const workers = (
+    let workers = (
       poolIds?.length
         ? allWorkers.filter((w) => poolIds!.includes(w.id) && w.active)
         : allWorkers.filter((w) => w.active)
     ).sort((a, b) => Number(b.surveyMain) - Number(a.surveyMain));
 
-    if (workers.length === 0) {
-      return NextResponse.json({ error: "候補となる職人がいません" }, { status: 400 });
+    // 本番プロバイダ時は OAuth 済みのみ候補に使う（未連携は空き検索できない）
+    if (!APP_CONFIG.useMockProviders) {
+      workers = workers.filter((w) => w.oauthLinked);
     }
 
-    const eventsByWorker = buildMockEvents();
-    const customerLatLng = mockGeocode(address);
+    if (workers.length === 0) {
+      return NextResponse.json(
+        {
+          error: APP_CONFIG.useMockProviders
+            ? "候補となる職人がいません"
+            : "OAuth 連携済みの職人がいません。管理画面でカレンダー連携してください。",
+        },
+        { status: 400 },
+      );
+    }
+
+    const customerLatLng = await resolveCustomerLatLng(address);
+    const eventsByWorker = await loadEventsByWorker(
+      workers,
+      new Date(),
+      settings.maxSearchDays,
+    );
 
     const { candidates, daysScanned } = await runGapSearch({
       customerLatLng,
@@ -51,6 +72,7 @@ export async function POST(req: Request) {
       eventsByWorker,
       fromDate: new Date(),
       settings,
+      driveFetcher: createDriveFetcher(),
     });
 
     const result = toPublicResponse(
@@ -60,7 +82,6 @@ export async function POST(req: Request) {
       settings.recommendedCount,
     );
 
-    // workerIds は確定時アサイン用（顧客UIには表示しない）
     const response: SearchSlotsResponse = {
       recommended: result.recommended,
       days: result.days,
@@ -74,6 +95,7 @@ export async function POST(req: Request) {
     return NextResponse.json(response);
   } catch (e) {
     console.error("[api/slots]", e);
-    return NextResponse.json({ error: "候補の検索に失敗しました" }, { status: 500 });
+    const message = e instanceof Error ? e.message : "候補の検索に失敗しました";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

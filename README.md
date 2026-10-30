@@ -76,10 +76,11 @@ data/                   # settings.json ＋ 実行時JSON（workers等）
 
 ## 次の実装（本番接続）
 
-1. `.env.local` に Firebase / Calendar OAuth / Maps キーを入れる  
-2. `CHOSEIKUN_USE_MOCK=false`  
-3. Distance Matrix・Calendar・Firestore プロバイダ実装  
+1. Render Environment に OAuth / Maps / Firebase を設定済みなら  
+2. `/admin/workers` で各職人 **Calendar連携**  
+3. `CHOSEIKUN_USE_MOCK=false` にしてデプロイ → 実カレンダーで枠検索  
 4. 二重予約防止・確定メール・前日リマインド  
-5. P-04 社内代理入力  
+5. 予約確定時の Calendar 書込  
 
-認証は既存 `nittei_chosei_system` の流用を想定（仕様書 §8）。
+OAuth 開始: `/api/oauth/calendar/start?workerId=W001`  
+コールバック: `/api/oauth/calendar/callback`

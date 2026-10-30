@@ -91,6 +91,8 @@ export type GapSearchInput = {
   eventsByWorker: Map<string, CalendarEvent[]>;
   fromDate: Date;
   settings: AppSettings;
+  /** 本番 Maps。未指定時はハバーサイン概算 */
+  driveFetcher?: (from: LatLng, to: LatLng) => Promise<number>;
 };
 
 /**
@@ -135,9 +137,18 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
         const a = findAnchorA(events, start, office, settings);
         const b = findAnchorB(events, end);
 
-        const travelIn = await getDriveMinutes(a.latLng, input.customerLatLng, cache);
-        const travelOut = b ? await getDriveMinutes(input.customerLatLng, b.latLng, cache) : 0;
-        const direct = b ? await getDriveMinutes(a.latLng, b.latLng, cache) : 0;
+        const travelIn = await getDriveMinutes(
+          a.latLng,
+          input.customerLatLng,
+          cache,
+          input.driveFetcher,
+        );
+        const travelOut = b
+          ? await getDriveMinutes(input.customerLatLng, b.latLng, cache, input.driveFetcher)
+          : 0;
+        const direct = b
+          ? await getDriveMinutes(a.latLng, b.latLng, cache, input.driveFetcher)
+          : 0;
         const viaCustomer = travelIn + travelOut;
         const deltaT = b ? Math.max(0, viaCustomer - direct) : 0;
 
