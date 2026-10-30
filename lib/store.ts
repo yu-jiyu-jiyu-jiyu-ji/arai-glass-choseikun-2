@@ -256,7 +256,7 @@ export async function cancelBooking(id: string): Promise<Booking> {
 
 export async function saveBookingCalendarEventIds(
   bookingId: string,
-  calendarEventIds: Record<string, string>,
+  calendarEventIds: Record<string, string[]>,
 ): Promise<void> {
   if (Object.keys(calendarEventIds).length === 0) return;
   if (useFirestore()) {

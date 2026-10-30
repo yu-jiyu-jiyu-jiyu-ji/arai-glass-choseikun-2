@@ -182,7 +182,7 @@ export async function fsLoadBookings(): Promise<Booking[]> {
       start: String(x.start),
       end: String(x.end),
       workerIds: (x.workerIds as string[]) ?? [],
-      calendarEventIds: (x.calendarEventIds as Record<string, string> | undefined) ?? undefined,
+      calendarEventIds: normalizeCalendarEventIds(x.calendarEventIds),
       createdAt: String(x.createdAt ?? ""),
       cancelledAt: (x.cancelledAt as string | null) ?? null,
     } as Booking;
@@ -271,8 +271,18 @@ export async function fsCancelBooking(id: string): Promise<Booking> {
 
 export async function fsSaveBookingCalendarEventIds(
   bookingId: string,
-  calendarEventIds: Record<string, string>,
+  calendarEventIds: Record<string, string[]>,
 ): Promise<void> {
   const db = assertDb();
   await db.collection(BOOKINGS).doc(bookingId).set({ calendarEventIds }, { merge: true });
+}
+
+function normalizeCalendarEventIds(raw: unknown): Record<string, string[]> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const out: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(v)) out[k] = v.map(String).filter(Boolean);
+    else if (typeof v === "string" && v) out[k] = [v];
+  }
+  return Object.keys(out).length ? out : undefined;
 }
