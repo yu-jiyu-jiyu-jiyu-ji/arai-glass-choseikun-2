@@ -255,25 +255,18 @@ export async function fsCancelBooking(id: string): Promise<Booking> {
   const ref = db.collection(BOOKINGS).doc(id);
   const doc = await ref.get();
   if (!doc.exists) throw new Error("予約が見つかりません");
-  const prev = doc.data()!;
+  const prev = doc.data() as Booking & Record<string, unknown>;
   if (prev.status === "cancelled") {
-    return {
-      ...(prev as Booking),
-      id,
-      calendarEventIds: (prev.calendarEventIds as Record<string, string> | undefined) ?? undefined,
-    };
+    return { ...prev, id };
   }
-  const next = {
+  const next: Booking = {
     ...prev,
+    id,
     status: "cancelled",
     cancelledAt: new Date().toISOString(),
   };
   await ref.set(next, { merge: true });
-  return {
-    ...(next as Booking),
-    id,
-    calendarEventIds: (next.calendarEventIds as Record<string, string> | undefined) ?? undefined,
-  };
+  return next;
 }
 
 export async function fsSaveBookingCalendarEventIds(
