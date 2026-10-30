@@ -210,6 +210,31 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
   return { candidates, daysScanned };
 }
 
+/** 就業時間内の候補開始ラベル（HH:mm）。昼休みは除く */
+export function listWorkHourLabels(settings: AppSettings): string[] {
+  const labels: string[] = [];
+  const {
+    workdayStartHour,
+    workdayEndHour,
+    lunchStartHour,
+    lunchEndHour,
+    slotIntervalMinutes,
+    surveyMinutes,
+  } = settings;
+  const dayEndMinutes = workdayEndHour * 60;
+  for (
+    let minutes = workdayStartHour * 60;
+    minutes + surveyMinutes <= dayEndMinutes;
+    minutes += slotIntervalMinutes
+  ) {
+    const h = Math.floor(minutes / 60);
+    if (h >= lunchStartHour && h < lunchEndHour) continue;
+    const m = minutes % 60;
+    labels.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+  }
+  return labels;
+}
+
 /** fromDate から searchable な日を count 日分（JST） */
 export function listSearchableDateKeys(
   fromDate: Date,

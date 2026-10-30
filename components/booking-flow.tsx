@@ -371,6 +371,7 @@ function ScheduleStep({
   const [error, setError] = useState<string | null>(null);
   const [recommended, setRecommended] = useState<Recommended[]>([]);
   const [calendarDays, setCalendarDays] = useState<CalendarDay[]>([]);
+  const [workHours, setWorkHours] = useState<string[]>(HOURS);
   const [open, setOpen] = useState(false);
   const [firstDay, setFirstDay] = useState(0);
   const perPage = useDaysPerPage();
@@ -400,6 +401,8 @@ function ScheduleStep({
         }));
         setRecommended(rec);
         setCalendarDays(buildCalendarFromApi(data.days as ApiDay[]));
+        const hours = (data.meta?.workHours as string[] | undefined)?.filter(Boolean);
+        setWorkHours(hours && hours.length > 0 ? hours : HOURS);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "検索に失敗しました");
       } finally {
@@ -447,18 +450,8 @@ function ScheduleStep({
     return at.getTime() <= now.getTime();
   };
 
-  // 表示中の日のうち「まだこれから」の時刻だけ行にする（過ぎた時台は出さない）
-  const hourSet = [
-    ...new Set(
-      days.flatMap((d) =>
-        d.slots.map((s) => s.start).filter((h) => !isPastHourOnDay(d.date, h)),
-      ),
-    ),
-  ].sort();
-  const displayHours =
-    hourSet.length > 0
-      ? hourSet
-      : HOURS.filter((h) => days.some((d) => !isPastHourOnDay(d.date, h)));
+  // 就業時間帯は空きの有無に関わらず全行表示。過ぎた時台だけ行ごと隠す
+  const displayHours = workHours.filter((h) => days.some((d) => !isPastHourOnDay(d.date, h)));
 
   return (
     <div className="space-y-8">

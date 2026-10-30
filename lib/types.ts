@@ -65,6 +65,8 @@ export type SearchSlotsResponse = {
     workersConsidered: number;
     /** 職人ごとに読み込んだカレンダー予定数（切り分け用） */
     eventsCountByWorker?: Record<string, number>;
+    /** TimeRex に常に並べる就業時間帯（HH:mm）。空きがなくても行を出す */
+    workHours?: string[];
   };
 };
 

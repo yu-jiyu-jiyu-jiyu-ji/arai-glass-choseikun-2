@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { APP_CONFIG } from "@/lib/config";
-import { runGapSearch, toPublicResponse } from "@/lib/gap-search/engine";
+import { listWorkHourLabels, runGapSearch, toPublicResponse } from "@/lib/gap-search/engine";
 import { hasDetailedAddress } from "@/lib/providers/mock";
 import {
   createDriveFetcher,
@@ -101,6 +101,7 @@ export async function POST(req: Request) {
         searchedDays: result.searchedDays,
         workersConsidered: result.workersConsidered,
         eventsCountByWorker,
+        workHours: listWorkHourLabels(settings),
       },
     };
 
