@@ -6,6 +6,8 @@ type RawEvent = {
   id?: string;
   summary?: string;
   location?: string;
+  status?: string;
+  transparency?: string;
   start?: { dateTime?: string; date?: string };
   end?: { dateTime?: string; date?: string };
 };
@@ -77,11 +79,16 @@ export async function listCalendarEvents(opts: {
 
   const out: CalendarEvent[] = [];
   for (const item of data.items ?? []) {
+    // キャンセル・「予定なし」(transparent) は塞がない
+    if (item.status === "cancelled") continue;
+    if (item.transparency === "transparent") continue;
+
     const start = parseEventTime(item.start, false);
     const end = parseEventTime(item.end, true);
     if (!start || !end || !(end > start)) continue;
     const location = item.location?.trim() ? item.location.trim() : null;
     const title = item.summary?.trim() || "(無題)";
+    // 住所なし・移動・ブロックも busy。現地（住所あり）は site
     const kind = classifyEvent(title, location);
     let latLng: LatLng | null = null;
     if (kind === "site" && location) {
@@ -123,7 +130,8 @@ export async function fetchWorkerEvents(opts: {
   timeMax: Date;
 }): Promise<CalendarEvent[]> {
   const { accessToken } = await refreshAccessToken(opts.refreshToken);
-  const calendarId = opts.worker.calendarId || opts.worker.googleEmail || "primary";
+  // OAuth したアカウントの主カレンダーを使う（台帳の calendarId/email だと別暦を読んで空き誤判定しやすい）
+  const calendarId = "primary";
   return listCalendarEvents({
     accessToken,
     calendarId,

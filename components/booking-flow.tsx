@@ -438,8 +438,27 @@ function ScheduleStep({
   const days = calendarDays.slice(pageStart, pageStart + perPage);
   const hasPrev = pageStart > 0;
   const hasNext = pageStart + perPage < calendarDays.length;
-  const hourSet = [...new Set(calendarDays.flatMap((d) => d.slots.map((s) => s.start)))].sort();
-  const displayHours = hourSet.length > 0 ? hourSet : HOURS;
+  const now = new Date();
+
+  /** その日のその時刻がすでに過ぎているか（ブラウザローカル＝日本向け） */
+  const isPastHourOnDay = (day: Date, hour: string) => {
+    const [h, m] = hour.split(":").map(Number);
+    const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m || 0, 0, 0);
+    return at.getTime() <= now.getTime();
+  };
+
+  // 表示中の日のうち「まだこれから」の時刻だけ行にする（過ぎた時台は出さない）
+  const hourSet = [
+    ...new Set(
+      days.flatMap((d) =>
+        d.slots.map((s) => s.start).filter((h) => !isPastHourOnDay(d.date, h)),
+      ),
+    ),
+  ].sort();
+  const displayHours =
+    hourSet.length > 0
+      ? hourSet
+      : HOURS.filter((h) => days.some((d) => !isPastHourOnDay(d.date, h)));
 
   return (
     <div className="space-y-8">
@@ -567,6 +586,15 @@ function ScheduleStep({
                   <Fragment key={hour}>
                     <div className="pt-1 text-right text-xs font-bold text-slate-500">{hour}</div>
                     {days.map((d) => {
+                      if (isPastHourOnDay(d.date, hour)) {
+                        return (
+                          <div
+                            key={`${d.date.toISOString()}-${hour}`}
+                            className="min-h-14 rounded-lg bg-slate-50"
+                            aria-hidden
+                          />
+                        );
+                      }
                       const slot = d.slots.find((s) => s.start === hour);
                       return slot ? (
                         <button

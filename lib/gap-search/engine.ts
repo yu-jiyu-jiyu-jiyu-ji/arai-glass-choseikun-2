@@ -1,26 +1,20 @@
 import type { AppSettings } from "../settings-shared";
 import { isSearchableDay } from "../holidays";
+import {
+  addJstDays,
+  jstDateKey,
+  jstWallOnSameDay,
+  startOfJstDay,
+} from "../time/jst";
 import type { CalendarEvent, LatLng, PublicSlot, SlotCandidate, Worker } from "../types";
 import { TravelTimeCache, getDriveMinutes } from "./travel";
-
-function startOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function addDays(d: Date, n: number) {
-  const x = new Date(d);
-  x.setDate(x.getDate() + n);
-  return x;
-}
 
 function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && bStart < aEnd;
 }
 
 /**
- * 就業時間内の候補開始時刻のみ列挙。
+ * 就業時間内の候補開始時刻のみ列挙（JST）。
  * 「開始＋調査時間が終了時刻を超える」枠は出さない。
  */
 function candidateStartsOnDay(day: Date, settings: AppSettings): Date[] {
@@ -42,9 +36,7 @@ function candidateStartsOnDay(day: Date, settings: AppSettings): Date[] {
   ) {
     const h = Math.floor(minutes / 60);
     if (h >= lunchStartHour && h < lunchEndHour) continue;
-    const start = new Date(day);
-    start.setHours(h, minutes % 60, 0, 0);
-    starts.push(start);
+    starts.push(jstWallOnSameDay(day, h, minutes % 60));
   }
   return starts;
 }
@@ -53,9 +45,9 @@ function siteEvents(events: CalendarEvent[]) {
   return events.filter((e) => e.kind === "site" && e.latLng);
 }
 
-/** Busy（移動等）＋現地予定の時間帯はすべて塞がり */
-function blockingEvents(events: CalendarEvent[]) {
-  return events;
+/** Busy（移動・住所なし等）＋現地予定の時間帯はすべて塞がり */
+function isBlocked(events: CalendarEvent[], slotStart: Date, slotEnd: Date) {
+  return events.some((e) => overlaps(slotStart, slotEnd, e.start, e.end));
 }
 
 function findAnchorA(
@@ -68,9 +60,10 @@ function findAnchorA(
     .filter((e) => e.end <= slotStart)
     .sort((a, b) => b.end.getTime() - a.end.getTime());
   if (sites[0]?.latLng) return { at: sites[0].end, latLng: sites[0].latLng };
-  const dayStart = startOfDay(slotStart);
-  dayStart.setHours(settings.workdayStartHour, 0, 0, 0);
-  return { at: dayStart, latLng: office };
+  return {
+    at: jstWallOnSameDay(slotStart, settings.workdayStartHour, 0),
+    latLng: office,
+  };
 }
 
 function findAnchorB(events: CalendarEvent[], slotEnd: Date): { at: Date; latLng: LatLng } | null {
@@ -79,10 +72,6 @@ function findAnchorB(events: CalendarEvent[], slotEnd: Date): { at: Date; latLng
     .sort((a, b) => a.start.getTime() - b.start.getTime());
   if (sites[0]?.latLng) return { at: sites[0].start, latLng: sites[0].latLng };
   return null;
-}
-
-function isBlocked(events: CalendarEvent[], slotStart: Date, slotEnd: Date) {
-  return blockingEvents(events).some((e) => overlaps(slotStart, slotEnd, e.start, e.end));
 }
 
 export type GapSearchInput = {
@@ -99,6 +88,7 @@ export type GapSearchInput = {
  * 段階探索つき間検索。
  * - requireTwoWorkers 時は同時刻に2人空いている枠のみ採用
  * - 担当優先度は同時刻のタイブレーカー（早い枠を殺さない）
+ * - 時刻・日付は Asia/Tokyo
  */
 export async function runGapSearch(input: GapSearchInput): Promise<{
   candidates: SlotCandidate[];
@@ -109,16 +99,19 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
   const cache = new TravelTimeCache();
   const candidates: SlotCandidate[] = [];
   const activeWorkers = input.workers.filter((w) => w.active);
+  const now = new Date();
 
   let daysScanned = 0;
-  const endExclusive = addDays(startOfDay(input.fromDate), settings.maxSearchDays);
+  const rangeStart = startOfJstDay(input.fromDate);
+  const endExclusive = addJstDays(rangeStart, settings.maxSearchDays);
 
-  for (let day = startOfDay(input.fromDate); day < endExclusive; day = addDays(day, 1)) {
+  for (let day = rangeStart; day < endExclusive; day = addJstDays(day, 1)) {
     if (!isSearchableDay(day, settings)) continue;
     daysScanned += 1;
 
     for (const start of candidateStartsOnDay(day, settings)) {
-      if (start < new Date()) continue;
+      // 現在時刻より前の枠は出さない（TimeRex 同様）
+      if (start.getTime() <= now.getTime()) continue;
       const end = new Date(start.getTime() + settings.surveyMinutes * 60_000);
 
       type Scored = {
@@ -158,11 +151,7 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
 
         const windowEnd = b
           ? b.at
-          : (() => {
-              const eod = startOfDay(start);
-              eod.setHours(settings.workdayEndHour, 0, 0, 0);
-              return eod;
-            })();
+          : jstWallOnSameDay(start, settings.workdayEndHour, 0);
 
         const available = (windowEnd.getTime() - a.at.getTime()) / 60_000;
         if (needed > available) continue;
@@ -240,7 +229,7 @@ export function toPublicResponse(
 
   const byDate = new Map<string, PublicSlot[]>();
   for (const c of sorted) {
-    const key = c.start.toISOString().slice(0, 10);
+    const key = jstDateKey(c.start);
     const list = byDate.get(key) ?? [];
     list.push({
       start: c.start.toISOString(),

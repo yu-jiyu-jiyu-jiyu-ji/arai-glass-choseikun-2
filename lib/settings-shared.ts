@@ -75,7 +75,21 @@ export const WORKDAY_LABELS: { key: WorkdayKey; label: string }[] = [
 
 export function workdayKeyFromDate(d: Date): WorkdayKey {
   const map: WorkdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
-  return map[d.getDay()];
+  // JST 曜日（Render UTC でも日本の定休と一致させる）
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    weekday: "short",
+  }).format(d);
+  const jstMap: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+  return map[jstMap[weekday] ?? d.getDay()];
 }
 
 export function officeFullAddress(s: AppSettings): string {

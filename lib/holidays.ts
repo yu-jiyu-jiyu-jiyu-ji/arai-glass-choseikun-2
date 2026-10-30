@@ -1,18 +1,18 @@
 import holiday_jp from "@holiday-jp/holiday_jp";
 import type { AppSettings } from "./settings-shared";
 import { workdayKeyFromDate } from "./settings-shared";
+import { jstDateKey, jstParts, jstWallTimeToDate } from "./time/jst";
 
-/** YYYY-MM-DD（ローカル日付） */
+/** YYYY-MM-DD（Asia/Tokyo） */
 export function toDateKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return jstDateKey(d);
 }
 
 export function isNationalHoliday(d: Date): boolean {
   try {
-    return holiday_jp.isHoliday(d);
+    // holiday_jp はローカル日付成分を見るため、JST の年月日で正午を渡す
+    const p = jstParts(d);
+    return holiday_jp.isHoliday(jstWallTimeToDate(p.year, p.month, p.day, 12, 0, 0));
   } catch {
     return false;
   }
