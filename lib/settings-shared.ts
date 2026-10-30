@@ -29,6 +29,12 @@ export type AppSettings = {
   excludeNationalHolidays: boolean;
   /** 個別休日 YYYY-MM-DD */
   individualHolidays: string[];
+  /** リマインドメールを送るか */
+  reminderEnabled: boolean;
+  /** 送信時刻（時・Asia/Tokyo・0-23）。既定 18 */
+  reminderHour: number;
+  /** 何日前に送るか（例: 7と1 = 1週間前と1日前） */
+  reminderDaysBefore: number[];
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -61,6 +67,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   workerRankOptions: ["A", "B", "C", "1"],
   excludeNationalHolidays: true,
   individualHolidays: [],
+  reminderEnabled: true,
+  reminderHour: 18,
+  reminderDaysBefore: [7, 1],
 };
 
 export const WORKDAY_LABELS: { key: WorkdayKey; label: string }[] = [

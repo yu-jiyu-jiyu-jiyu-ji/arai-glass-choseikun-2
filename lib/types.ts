@@ -85,6 +85,8 @@ export type Booking = {
   workerIds: string[];
   /** 職人ID → Google Calendar イベントID一覧（現地＋移動。キャンセル時に削除） */
   calendarEventIds?: Record<string, string[]>;
+  /** リマインド送信済みキー（例: "7","1"）→ 送信日時 ISO */
+  remindersSent?: Record<string, string>;
   createdAt: string;
   cancelledAt: string | null;
 };

@@ -272,6 +272,30 @@ export async function saveBookingCalendarEventIds(
   invalidateBookings();
 }
 
+export async function markBookingReminderSent(
+  bookingId: string,
+  daysBeforeKey: string,
+): Promise<void> {
+  const sentAt = new Date().toISOString();
+  if (useFirestore()) {
+    await fsStore.fsMarkBookingReminderSent(bookingId, daysBeforeKey, sentAt);
+    invalidateBookings();
+    return;
+  }
+  const bookings = await loadBookingsUncached();
+  const idx = bookings.findIndex((b) => b.id === bookingId);
+  if (idx < 0) return;
+  bookings[idx] = {
+    ...bookings[idx],
+    remindersSent: {
+      ...(bookings[idx].remindersSent ?? {}),
+      [daysBeforeKey]: sentAt,
+    },
+  };
+  await writeJson(BOOKINGS_PATH, bookings);
+  invalidateBookings();
+}
+
 /** キャッシュを温める（起動後・管理画面入場時など） */
 export async function warmStoreCache(): Promise<{
   workers: number;

@@ -183,6 +183,7 @@ export async function fsLoadBookings(): Promise<Booking[]> {
       end: String(x.end),
       workerIds: (x.workerIds as string[]) ?? [],
       calendarEventIds: normalizeCalendarEventIds(x.calendarEventIds),
+      remindersSent: normalizeRemindersSent(x.remindersSent),
       createdAt: String(x.createdAt ?? ""),
       cancelledAt: (x.cancelledAt as string | null) ?? null,
     } as Booking;
@@ -285,4 +286,29 @@ function normalizeCalendarEventIds(raw: unknown): Record<string, string[]> | und
     else if (typeof v === "string" && v) out[k] = [v];
   }
   return Object.keys(out).length ? out : undefined;
+}
+
+function normalizeRemindersSent(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "string" && v) out[k] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+export async function fsMarkBookingReminderSent(
+  bookingId: string,
+  daysBeforeKey: string,
+  sentAt: string,
+): Promise<void> {
+  const db = assertDb();
+  const ref = db.collection(BOOKINGS).doc(bookingId);
+  const doc = await ref.get();
+  if (!doc.exists) return;
+  const prev = (doc.data()?.remindersSent as Record<string, string> | undefined) ?? {};
+  await ref.set(
+    { remindersSent: { ...prev, [daysBeforeKey]: sentAt } },
+    { merge: true },
+  );
 }

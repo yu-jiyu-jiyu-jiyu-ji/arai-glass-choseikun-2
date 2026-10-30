@@ -301,6 +301,54 @@ export default function SettingsPage() {
           </label>
         </section>
 
+        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="mb-2 text-lg font-bold">メールリマインド</h2>
+          <p className="mb-4 text-sm leading-relaxed text-slate-600">
+            予約確定済みのお客様へ、訪問日の何日前・何時（日本時間）にリマインドメールを送るか設定します。
+            実際の送信には Render の Cron と SMTP 環境変数が必要です。
+          </p>
+          <label className="mb-4 flex items-center gap-3 text-sm font-bold">
+            <input
+              type="checkbox"
+              className="h-5 w-5 accent-blue-900"
+              checked={settings.reminderEnabled ?? true}
+              onChange={(e) => setSettings({ ...settings, reminderEnabled: e.target.checked })}
+            />
+            リマインドメールを送る
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm font-bold">
+              送信時刻（時・0〜23）
+              <input
+                type="number"
+                min={0}
+                max={23}
+                className="mt-1 w-full rounded-xl border-2 border-slate-300 px-3 py-3"
+                value={settings.reminderHour ?? 18}
+                onChange={(e) => setNum("reminderHour", e.target.value)}
+              />
+            </label>
+            <label className="text-sm font-bold sm:col-span-2">
+              何日前に送るか（カンマ区切り・例: 7, 1）
+              <input
+                className="mt-1 w-full rounded-xl border-2 border-slate-300 px-3 py-3"
+                value={(settings.reminderDaysBefore ?? [7, 1]).join(", ")}
+                onChange={(e) => {
+                  const days = e.target.value
+                    .split(/[,、\s]+/)
+                    .map((s) => Number(s.trim()))
+                    .filter((n) => Number.isFinite(n) && n >= 0);
+                  setSettings({ ...settings, reminderDaysBefore: days.length ? days : [7, 1] });
+                }}
+              />
+            </label>
+          </div>
+          <p className="mt-3 text-sm font-bold text-blue-900">
+            現在: {(settings.reminderDaysBefore ?? [7, 1]).map((d) => `${d}日前`).join("・")}の
+            {String(settings.reminderHour ?? 18).padStart(2, "0")}:00（JST）に送信
+          </p>
+        </section>
+
         {message && <p className="text-sm font-bold text-green-700">{message}</p>}
         {error && (
           <p className="text-sm font-bold text-red-600" role="alert">

@@ -35,6 +35,30 @@
 - JSON・秘密鍵は **Secret** として登録（ログに出さない）
 - 既存 nittei（Streamlit）用のリダイレクト URI と **choseikun 用は別**。両方 OAuth クライアントに登録してよい
 
+## メールリマインド（SMTP + Cron）
+
+日程調整ツールと同じ SMTP 変数を Render に入れる。
+
+| 変数名 | 入れるもの |
+|--------|------------|
+| `SMTP_HOST` | 例: `smtp.gmail.com` |
+| `SMTP_PORT` | 例: `587` |
+| `SMTP_USER` | 送信アカウント |
+| `SMTP_PASSWORD` | アプリパスワード等 |
+| `SMTP_FROM` | 差出人（任意。未設定時は SMTP_USER） |
+| `CRON_SECRET` | 任意の長い乱数（Cron 呼び出し認証用） |
+
+### Render Cron Job
+
+- スケジュール: **毎時**（例: `0 * * * *`）※設定の送信時刻（既定18時 JST）のときだけ実送信
+- URL: `https://arai-glass-choseikun-2-1.onrender.com/api/cron/reminders`
+- Header: `Authorization: Bearer <CRON_SECRET>`
+
+送信タイミング（何日前・何時）は **管理画面 → 共通設定 → メールリマインド** で変更可能（既定: 7日前と1日前の18時）。
+
+手動テスト:  
+`/api/cron/reminders?secret=...&force=1`（時刻チェックを bypass）
+
 ## 確認
 
 デプロイ後: `https://arai-glass-choseikun-2-1.onrender.com/api/health`  
