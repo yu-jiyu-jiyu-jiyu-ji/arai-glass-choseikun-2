@@ -212,6 +212,9 @@ export default function SettingsPage() {
             </label>
           ))}
         </div>
+        <p className="text-xs leading-relaxed text-slate-600">
+          初期探索日数＝おすすめが揃ったら打ち切る最短日数。最大探索日数＝カレンダー（TimeRex）に並べる日数／探索上限。
+        </p>
         <div>
           <p className="mb-2 text-sm font-bold">空き枠としてカウントする招待ステータス</p>
           <p className="mb-3 text-xs text-slate-600">既定は「辞退」のみ。未回答・仮承諾は重複リスクあり。</p>

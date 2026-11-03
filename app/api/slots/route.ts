@@ -94,8 +94,8 @@ export async function POST(req: Request) {
       {
         fromDate: new Date(),
         settings,
-        // TimeRex: おすすめが遠くても直近から初期探索日数分は必ず並べる
-        calendarSearchableDays: settings.initialSearchDays,
+        // TimeRex: 最大探索日数分の就業日を必ず並べる（空き0の日も含む）
+        calendarSearchableDays: settings.maxSearchDays,
       },
     );
 

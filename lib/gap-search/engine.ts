@@ -151,9 +151,10 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
         const viaCustomer = travelIn + travelOut;
         const deltaT = b ? Math.max(0, viaCustomer - direct) : 0;
 
-        const travelBuffer = settings.travelBufferMinutes ?? 0;
-        if (deltaT + travelBuffer >= settings.detourThresholdMinutes) continue;
+        // ΔT閾値は迂回の大きさだけを見る（移動バッファは所要時間判定側）
+        if (deltaT >= settings.detourThresholdMinutes) continue;
 
+        const travelBuffer = settings.travelBufferMinutes ?? 0;
         const needed =
           travelIn +
           travelBuffer +
