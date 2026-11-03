@@ -4,6 +4,12 @@ import { jstParts } from "../time/jst";
 import type { Booking } from "../types";
 import { sendMail, smtpConfigured } from "./smtp";
 
+export type MailNotifyResult = {
+  smtpConfigured: boolean;
+  staff: { workerId: string; to: string; ok: boolean; error?: string }[];
+  customer: { to: string; ok: boolean; error?: string } | null;
+};
+
 function formatVisit(iso: string): string {
   const d = new Date(iso);
   const p = jstParts(d);
@@ -21,16 +27,28 @@ function escapeHtml(s: string) {
 }
 
 /** 予約成立時: 担当職人へ通知 + 顧客へ案内（メールがある場合） */
-export async function sendBookingNotifications(booking: Booking): Promise<void> {
-  if (!smtpConfigured()) {
+export async function sendBookingNotifications(booking: Booking): Promise<MailNotifyResult> {
+  const result: MailNotifyResult = {
+    smtpConfigured: smtpConfigured(),
+    staff: [],
+    customer: null,
+  };
+
+  if (!result.smtpConfigured) {
     console.warn("[mail] SMTP未設定のため予約通知をスキップ");
-    return;
+    return result;
   }
 
   const settings = await loadSettings();
   const workers = await loadWorkers();
   const assigned = workers.filter(
     (w) => booking.workerIds.includes(w.id) && w.notifyOnBooking !== false && w.googleEmail,
+  );
+
+  console.info(
+    `[mail] booking=${booking.id} workers=${booking.workerIds.join(",")} notifyTargets=${assigned
+      .map((w) => `${w.id}:${w.googleEmail}`)
+      .join(",") || "(none)"}`,
   );
 
   const summary = [
@@ -53,13 +71,16 @@ export async function sendBookingNotifications(booking: Booking): Promise<void> 
           subject: `【調整君】新規予約 ${booking.name}様 / ${formatVisit(booking.start)}`,
           text: `${w.name} さん\n\n新しい訪問調査予約が入りました。\n\n${summary}\n`,
         });
+        result.staff.push({ workerId: w.id, to: w.googleEmail, ok: true });
       } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
         console.error(`[mail] staff notify failed ${w.id}`, e);
+        result.staff.push({ workerId: w.id, to: w.googleEmail, ok: false, error: msg });
       }
     }),
   );
 
-  if (!booking.email?.trim()) return;
+  if (!booking.email?.trim()) return result;
 
   const body = (settings.customerMailBody || "").trim();
   const text = [
@@ -76,12 +97,13 @@ export async function sendBookingNotifications(booking: Booking): Promise<void> 
   const mode = settings.guideImageSendMode ?? "inline";
   const fileName = settings.guideImageFileName || "guide.jpg";
   const subject = `【荒井硝子】訪問調査のご予約確認（${formatVisit(booking.start)}）`;
+  const to = booking.email.trim();
 
   try {
     if (image && mode === "attachment") {
       const match = /^data:([^;]+);base64,(.+)$/.exec(image);
       await sendMail({
-        to: booking.email.trim(),
+        to,
         subject,
         text,
         attachments: match
@@ -94,21 +116,22 @@ export async function sendBookingNotifications(booking: Booking): Promise<void> 
             ]
           : undefined,
       });
-      return;
-    }
-
-    if (image && mode === "inline") {
+    } else if (image && mode === "inline") {
       await sendMail({
-        to: booking.email.trim(),
+        to,
         subject,
         text,
         html: `<pre style="font-family:sans-serif;white-space:pre-wrap">${escapeHtml(text)}</pre><p><img src="${image}" alt="ご案内" style="max-width:100%;height:auto" /></p>`,
       });
-      return;
+    } else {
+      await sendMail({ to, subject, text });
     }
-
-    await sendMail({ to: booking.email.trim(), subject, text });
+    result.customer = { to, ok: true };
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     console.error("[mail] customer notify failed", e);
+    result.customer = { to, ok: false, error: msg };
   }
+
+  return result;
 }

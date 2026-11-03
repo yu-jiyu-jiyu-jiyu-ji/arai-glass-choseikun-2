@@ -136,4 +136,10 @@ export type BookingResponse = {
   status: BookingStatus;
   mode: "mock" | "live";
   linkToken?: string | null;
+  /** SMTP 通知結果（切り分け用。顧客UIでは使わない） */
+  mail?: {
+    smtpConfigured: boolean;
+    staff: { workerId: string; to: string; ok: boolean; error?: string }[];
+    customer: { to: string; ok: boolean; error?: string } | null;
+  };
 };

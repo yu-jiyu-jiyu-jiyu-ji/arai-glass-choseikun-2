@@ -55,10 +55,20 @@ export async function POST(req: Request) {
     const booking = await createBooking(body);
 
     // 社内通知は after に載せない（Render で落ちると届かない）。SMTP は短いので本リクエストで送る
+    let mail: BookingResponse["mail"];
     try {
-      await sendBookingNotifications(booking);
+      mail = await sendBookingNotifications(booking);
     } catch (e) {
       console.error("[api/bookings] mail notify failed", e);
+      mail = {
+        smtpConfigured: false,
+        staff: [],
+        customer: {
+          to: booking.email || "",
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        },
+      };
     }
 
     const response: BookingResponse = {
@@ -66,6 +76,7 @@ export async function POST(req: Request) {
       status: booking.status,
       mode: APP_CONFIG.useMockProviders ? "mock" : "live",
       linkToken: booking.linkToken,
+      mail,
     };
 
     // カレンダー書き込みだけ after（完了画面を待たせない）

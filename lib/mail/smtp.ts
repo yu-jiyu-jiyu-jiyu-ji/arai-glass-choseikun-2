@@ -16,6 +16,11 @@ function fromAddress(): string {
   );
 }
 
+/** Gmailアプリパスワードはスペース入りで貼られることがあるので除去 */
+function smtpPassword(): string {
+  return (process.env.SMTP_PASSWORD || "").replace(/\s+/g, "");
+}
+
 export async function sendMail(opts: {
   to: string;
   subject: string;
@@ -32,12 +37,13 @@ export async function sendMail(opts: {
     host: process.env.SMTP_HOST!.trim(),
     port,
     secure: useSsl,
+    requireTLS: !useSsl && port === 587,
     auth: {
       user: process.env.SMTP_USER!.trim(),
-      pass: process.env.SMTP_PASSWORD!.trim(),
+      pass: smtpPassword(),
     },
   });
-  await transporter.sendMail({
+  const info = await transporter.sendMail({
     from: fromAddress(),
     to: opts.to,
     subject: opts.subject,
@@ -45,4 +51,5 @@ export async function sendMail(opts: {
     html: opts.html,
     attachments: opts.attachments,
   });
+  console.info(`[mail] sent to=${opts.to} messageId=${info.messageId || "(none)"}`);
 }
