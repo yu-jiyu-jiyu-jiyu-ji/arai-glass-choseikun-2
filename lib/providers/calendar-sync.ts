@@ -30,11 +30,20 @@ function siteEvents(events: ManagedCalendarEvent[]) {
   return events.filter((e) => e.kind === "site" && e.location);
 }
 
+function mapsDirUrl(origin: string, destination: string) {
+  return (
+    `https://www.google.com/maps/dir/?api=1` +
+    `&origin=${encodeURIComponent(origin)}` +
+    `&destination=${encodeURIComponent(destination)}` +
+    `&travelmode=driving`
+  );
+}
+
 /**
  * 担当職人のカレンダーへ「現地＋車移動」を登録し、間に挟む場合は既存の調整くん移動を付け替える。
- * - 前の現地なし → 事務所起点の移動
- * - 後の現地なし → 事務所への帰社移動
- * - 車移動のみ（Maps の DRIVE）
+ * - 前の現地なし → 事務所起点の移動（就業開始前も可）
+ * - 後の現地なし → 事務所への帰社移動（直後の他予定より前で打ち切り）
+ * - ナビURLは移動予定に付与
  */
 export async function pushBookingToCalendars(
   booking: Booking,
@@ -45,6 +54,7 @@ export async function pushBookingToCalendars(
   const settings = await loadSettings();
   const office = settings.officeLatLng;
   const officeLabel = [settings.officeAddress, settings.officeBuilding].filter(Boolean).join(" ");
+  const travelBuffer = settings.travelBufferMinutes ?? 0;
 
   let customerLatLng: LatLng;
   try {
@@ -77,7 +87,6 @@ export async function pushBookingToCalendars(
           timeMax: dayEnd,
         });
 
-        // この予約の現地枠と重ならない前後の現地
         const sites = siteEvents(existing).filter(
           (e) => !(e.start < bookingEnd && bookingStart < e.end),
         );
@@ -88,21 +97,30 @@ export async function pushBookingToCalendars(
           .filter((e) => e.start >= bookingEnd)
           .sort((a, b) => a.start.getTime() - b.start.getTime())[0];
 
+        // 直後の「他予定」（会議など）— 帰社移動が被らないよう締切にする
+        const nextBusy = existing
+          .filter(
+            (e) =>
+              e.start >= bookingEnd &&
+              !(e.choseikunManaged && e.choseikunKind === "travel"),
+          )
+          .sort((a, b) => a.start.getTime() - b.start.getTime())[0];
+
         const anchorA = {
           at: prevSite?.end ?? jstWallOnSameDay(bookingStart, settings.workdayStartHour, 0),
           latLng: prevSite ? await geocodeSafe(prevSite.location!, office) : office,
           label: prevSite?.location ?? officeLabel,
+          fromSite: Boolean(prevSite),
         };
+        const dayEndWall = jstWallOnSameDay(bookingEnd, settings.workdayEndHour, 0);
         const anchorB = {
-          at: nextSite?.start ?? jstWallOnSameDay(bookingEnd, settings.workdayEndHour, 0),
+          at: nextSite?.start ?? dayEndWall,
           latLng: nextSite ? await geocodeSafe(nextSite.location!, office) : office,
           label: nextSite?.location ?? officeLabel,
           isOffice: !nextSite,
         };
 
-        // 付け替え: 直前〜直後のあいだにある「調整くん移動」を削除
-        // （例: 事務所→葛西 の移動を消して、事務所→浅草橋・浅草橋→葛西 に差し替える）
-        const gapStart = anchorA.at;
+        const gapStart = prevSite?.end ?? dayStart;
         const gapEnd = nextSite?.start ?? bookingEnd;
         const toDelete = existing.filter(
           (e) =>
@@ -119,14 +137,13 @@ export async function pushBookingToCalendars(
           }
         }
 
-        // もし直後が事務所帰社で、直後現地がない場合、booking 後〜就業終了の旧帰社移動も消す
         if (!nextSite) {
           const returnDeletes = existing.filter(
             (e) =>
               e.choseikunManaged &&
               e.choseikunKind === "travel" &&
               e.start >= bookingStart &&
-              e.start < jstWallOnSameDay(bookingEnd, settings.workdayEndHour, 0),
+              e.start < dayEndWall,
           );
           for (const ev of returnDeletes) {
             if (toDelete.some((d) => d.id === ev.id)) continue;
@@ -140,11 +157,15 @@ export async function pushBookingToCalendars(
 
         const travelInMin = await driveMinutesSafe(anchorA.latLng, customerLatLng);
         const travelOutMin = await driveMinutesSafe(customerLatLng, anchorB.latLng);
+        const inDuration = travelInMin + travelBuffer;
+        const outDuration = travelOutMin + travelBuffer;
 
-        // 到着移動: 終わる時刻 = 調査開始。開始は Maps 分だけ前（直前予定より後にクランプ）
+        // 到着移動: 調査開始で終わる。事務所起点なら就業前スタート可
         const travelInEnd = bookingStart;
-        let travelInStart = new Date(travelInEnd.getTime() - travelInMin * 60_000);
-        if (travelInStart < anchorA.at) travelInStart = new Date(anchorA.at);
+        let travelInStart = new Date(travelInEnd.getTime() - inDuration * 60_000);
+        if (anchorA.fromSite && travelInStart < anchorA.at) {
+          travelInStart = new Date(anchorA.at);
+        }
 
         if (travelInEnd > travelInStart) {
           const id = await insertCalendarEvent(refresh, {
@@ -152,6 +173,8 @@ export async function pushBookingToCalendars(
             location: "",
             description: [
               `${anchorA.label} → ${booking.address}`,
+              "【ナビ（車）】",
+              mapsDirUrl(anchorA.label, booking.address),
               `予約ID: ${booking.id}`,
               "",
               CHOSEIKUN_TRAVEL_MARK,
@@ -164,13 +187,7 @@ export async function pushBookingToCalendars(
           created.push(id);
         }
 
-        const navUrl =
-          `https://www.google.com/maps/dir/?api=1` +
-          `&origin=${encodeURIComponent(anchorA.label)}` +
-          `&destination=${encodeURIComponent(booking.address)}` +
-          `&travelmode=driving`;
-
-        // 現地調査
+        // 現地調査（ナビは移動側に付ける）
         const siteId = await insertCalendarEvent(refresh, {
           summary: `現地調査 ${booking.name}様`,
           location: booking.address,
@@ -182,9 +199,6 @@ export async function pushBookingToCalendars(
             `駐車場: ${PARKING_LABEL[booking.parking] ?? booking.parking}`,
             `予約ID: ${booking.id}`,
             "",
-            "【ナビ（車）】",
-            navUrl,
-            "",
             CHOSEIKUN_SITE_MARK,
           ].join("\n"),
           startIso: booking.start,
@@ -194,10 +208,12 @@ export async function pushBookingToCalendars(
         });
         created.push(siteId);
 
-        // 出発移動: 調査終了 → 次現地 or 事務所
+        // 出発移動: 次現地 or 帰社。直後の他予定より前で打ち切り（被り防止）
         const travelOutStart = bookingEnd;
-        let travelOutEnd = new Date(travelOutStart.getTime() + travelOutMin * 60_000);
-        if (travelOutEnd > anchorB.at) travelOutEnd = new Date(anchorB.at);
+        let travelOutEnd = new Date(travelOutStart.getTime() + outDuration * 60_000);
+        const hardCap =
+          nextBusy && nextBusy.start < anchorB.at ? nextBusy.start : anchorB.at;
+        if (travelOutEnd > hardCap) travelOutEnd = new Date(hardCap);
 
         if (travelOutEnd > travelOutStart) {
           const id = await insertCalendarEvent(refresh, {
@@ -206,6 +222,8 @@ export async function pushBookingToCalendars(
             description: [
               `${booking.address} → ${anchorB.label}`,
               anchorB.isOffice ? "（帰社）" : "",
+              "【ナビ（車）】",
+              mapsDirUrl(booking.address, anchorB.label),
               `予約ID: ${booking.id}`,
               "",
               CHOSEIKUN_TRAVEL_MARK,
@@ -270,7 +288,6 @@ export async function removeBookingFromCalendars(booking: Booking): Promise<void
         return;
       }
 
-      // 当日の管理イベントを見て、site / travel を判別
       const dayStart = startOfJstDay(new Date(booking.start));
       const dayEnd = addJstDays(dayStart, 1);
       let managed: ManagedCalendarEvent[] = [];
@@ -287,9 +304,7 @@ export async function removeBookingFromCalendars(booking: Booking): Promise<void
       for (const eventId of eventIds) {
         const hit = managed.find((m) => m.id === eventId);
         const isTravel =
-          hit?.choseikunKind === "travel" ||
-          hit?.summary?.includes("移動") ||
-          (!hit && false);
+          hit?.choseikunKind === "travel" || hit?.summary?.includes("移動") || false;
         try {
           if (isTravel || hit?.choseikunKind === "travel") {
             await deleteCalendarEvent(refresh, eventId);
@@ -305,7 +320,6 @@ export async function removeBookingFromCalendars(booking: Booking): Promise<void
         }
       }
 
-      // 付随移動で ID 未保存のものも、同予約IDの移動を掃除
       for (const ev of managed) {
         if (ev.choseikunKind !== "travel") continue;
         if (!ev.description.includes(booking.id)) continue;

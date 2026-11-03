@@ -50,32 +50,45 @@ function isBlocked(events: CalendarEvent[], slotStart: Date, slotEnd: Date) {
   return events.some((e) => overlaps(slotStart, slotEnd, e.start, e.end));
 }
 
+/** スロット後の最初の予定開始（移動の衝突回避用） */
+function nextEventStart(events: CalendarEvent[], after: Date): Date | null {
+  const hits = events
+    .filter((e) => e.start >= after)
+    .sort((a, b) => a.start.getTime() - b.start.getTime());
+  return hits[0]?.start ?? null;
+}
+
 function findAnchorA(
   events: CalendarEvent[],
   slotStart: Date,
   office: LatLng,
   settings: AppSettings,
-): { at: Date; latLng: LatLng } {
+): { at: Date; latLng: LatLng; fromSite: boolean } {
   const dayStart = jstWallOnSameDay(slotStart, settings.workdayStartHour, 0);
   // 前日の現地は持ち越さない（翌朝は事務所起点）。短い空きが不当に潰れるのを防ぐ
   const sites = siteEvents(events)
     .filter((e) => e.end <= slotStart && e.end.getTime() >= dayStart.getTime())
     .sort((a, b) => b.end.getTime() - a.end.getTime());
-  if (sites[0]?.latLng) return { at: sites[0].end, latLng: sites[0].latLng };
-  return { at: dayStart, latLng: office };
+  if (sites[0]?.latLng) {
+    return { at: sites[0].end, latLng: sites[0].latLng, fromSite: true };
+  }
+  return { at: dayStart, latLng: office, fromSite: false };
 }
 
 function findAnchorB(
   events: CalendarEvent[],
   slotEnd: Date,
+  office: LatLng,
   settings: AppSettings,
-): { at: Date; latLng: LatLng } | null {
+): { at: Date; latLng: LatLng; isOffice: boolean } {
   const dayEnd = jstWallOnSameDay(slotEnd, settings.workdayEndHour, 0);
   const sites = siteEvents(events)
     .filter((e) => e.start >= slotEnd && e.start.getTime() <= dayEnd.getTime())
     .sort((a, b) => a.start.getTime() - b.start.getTime());
-  if (sites[0]?.latLng) return { at: sites[0].start, latLng: sites[0].latLng };
-  return null;
+  if (sites[0]?.latLng) {
+    return { at: sites[0].start, latLng: sites[0].latLng, isOffice: false };
+  }
+  return { at: dayEnd, latLng: office, isOffice: true };
 }
 
 export type GapSearchInput = {
@@ -134,7 +147,7 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
         if (isBlocked(events, start, end)) continue;
 
         const a = findAnchorA(events, start, office, settings);
-        const b = findAnchorB(events, end, settings);
+        const b = findAnchorB(events, end, office, settings);
 
         const travelIn = await getDriveMinutes(
           a.latLng,
@@ -142,30 +155,43 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
           cache,
           input.driveFetcher,
         );
-        const travelOut = b
-          ? await getDriveMinutes(input.customerLatLng, b.latLng, cache, input.driveFetcher)
-          : 0;
-        const direct = b
-          ? await getDriveMinutes(a.latLng, b.latLng, cache, input.driveFetcher)
-          : 0;
+        const travelOut = await getDriveMinutes(
+          input.customerLatLng,
+          b.latLng,
+          cache,
+          input.driveFetcher,
+        );
+        const direct = b.isOffice
+          ? 0
+          : await getDriveMinutes(a.latLng, b.latLng, cache, input.driveFetcher);
         const viaCustomer = travelIn + travelOut;
-        const deltaT = b ? Math.max(0, viaCustomer - direct) : 0;
+        // 帰社のみのときは迂回判定なし（次現地があるときだけ ΔT）
+        const deltaT = b.isOffice ? 0 : Math.max(0, viaCustomer - direct);
 
         // ΔT閾値は迂回の大きさだけを見る（移動バッファは所要時間判定側）
-        if (deltaT >= settings.detourThresholdMinutes) continue;
+        if (!b.isOffice && deltaT >= settings.detourThresholdMinutes) continue;
 
         const travelBuffer = settings.travelBufferMinutes ?? 0;
+        const inNeed = travelIn + travelBuffer;
+        const outNeed = travelOut + travelBuffer + settings.bufferMinutes;
+
+        // 到着移動: 直前現地のあと／事務所起点。就業開始前の移動は許可
+        const travelInStart = new Date(start.getTime() - inNeed * 60_000);
+        if (a.fromSite && travelInStart < a.at) continue;
+        if (isBlocked(events, travelInStart, start)) continue;
+
+        // 出発移動: 次の「任意の予定」より前に収める（会議などとの被り禁止）
+        const busyDeadline = nextEventStart(events, end);
+        const outDeadline =
+          busyDeadline && busyDeadline < b.at ? busyDeadline : b.at;
+        const travelOutEnd = new Date(end.getTime() + outNeed * 60_000);
+        if (travelOutEnd > outDeadline) continue;
+        if (isBlocked(events, end, travelOutEnd)) continue;
+
         const needed =
-          travelIn +
-          travelBuffer +
-          settings.surveyMinutes +
-          travelOut +
-          travelBuffer +
-          settings.bufferMinutes;
-        const windowEnd = b
-          ? b.at
-          : jstWallOnSameDay(start, settings.workdayEndHour, 0);
-        const available = (windowEnd.getTime() - a.at.getTime()) / 60_000;
+          inNeed + settings.surveyMinutes + outNeed;
+        const available = (outDeadline.getTime() - (a.fromSite ? a.at : travelInStart).getTime()) /
+          60_000;
         if (needed > available) continue;
 
         const score = travelIn * 2 + deltaT * 3 + (worker.surveyMain ? 0 : 15);

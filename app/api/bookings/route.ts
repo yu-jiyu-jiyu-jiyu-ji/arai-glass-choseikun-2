@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { APP_CONFIG } from "@/lib/config";
 import { sendBookingNotifications } from "@/lib/mail/booking-notify";
 import { pushBookingToCalendars } from "@/lib/providers/calendar-sync";
@@ -54,26 +54,27 @@ export async function POST(req: Request) {
 
     const booking = await createBooking(body);
 
-    // 予約保存後に担当カレンダーへ書き込み（失敗しても予約は確定のまま）
-    try {
-      const calendarEventIds = await pushBookingToCalendars(booking);
-      await saveBookingCalendarEventIds(booking.id, calendarEventIds);
-    } catch (e) {
-      console.error("[api/bookings] calendar sync failed", e);
-    }
-
-    try {
-      await sendBookingNotifications(booking);
-    } catch (e) {
-      console.error("[api/bookings] mail notify failed", e);
-    }
-
     const response: BookingResponse = {
       id: booking.id,
       status: booking.status,
       mode: APP_CONFIG.useMockProviders ? "mock" : "live",
       linkToken: booking.linkToken,
     };
+
+    // 完了画面がタイムアウトしないよう、先にレスポンス → カレンダー／メールは after
+    after(async () => {
+      try {
+        const calendarEventIds = await pushBookingToCalendars(booking);
+        await saveBookingCalendarEventIds(booking.id, calendarEventIds);
+      } catch (e) {
+        console.error("[api/bookings] calendar sync failed", e);
+      }
+      try {
+        await sendBookingNotifications(booking);
+      } catch (e) {
+        console.error("[api/bookings] mail notify failed", e);
+      }
+    });
 
     return NextResponse.json(response);
   } catch (e) {

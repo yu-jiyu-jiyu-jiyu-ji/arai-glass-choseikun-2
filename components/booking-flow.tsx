@@ -20,7 +20,6 @@ import {
   X,
 } from "lucide-react";
 
-type Step = 1 | 2 | 3;
 
 type Parking = "onsite" | "coin" | "front" | "none";
 
@@ -140,12 +139,17 @@ function parkingLabel(value: FormValues["parking"]) {
 
 /* ---------- 共通の部品 ---------- */
 
-function StepIndicator({ step }: { step: Step }) {
-  const labels = ["情報入力", "日程選択", "予約完了"];
+function StepIndicator({
+  step,
+  labels = ["情報入力", "日程選択", "予約完了"],
+}: {
+  step: number;
+  labels?: string[];
+}) {
   return (
     <ol className="flex items-center gap-2 text-sm" aria-label="手続きの進み具合">
       {labels.map((label, i) => {
-        const n = (i + 1) as Step;
+        const n = i + 1;
         const active = n === step;
         const done = n < step;
         return (
@@ -162,7 +166,9 @@ function StepIndicator({ step }: { step: Step }) {
             >
               {done ? "✓" : n}
             </span>
-            <span className={active ? "font-bold text-white" : "text-blue-200"}>{label}</span>
+            <span className={`text-xs sm:text-sm ${active ? "font-bold text-white" : "text-blue-200"}`}>
+              {label}
+            </span>
           </li>
         );
       })}
@@ -212,6 +218,8 @@ function InputStep({
   emailOptional = false,
   addressOnly = false,
   skipAddress = false,
+  submitting = false,
+  submitError = null,
 }: {
   values: FormValues;
   onChange: (v: FormValues) => void;
@@ -221,6 +229,8 @@ function InputStep({
   addressOnly?: boolean;
   /** 住所以外（社内・枠選択後） */
   skipAddress?: boolean;
+  submitting?: boolean;
+  submitError?: string | null;
 }) {
   const [errors, setErrors] = useState<Partial<Record<keyof FormValues, string>>>({});
 
@@ -389,12 +399,29 @@ function InputStep({
       </>
       )}
 
+      {submitError ? (
+        <p className="rounded-xl bg-red-50 p-3 text-sm font-bold text-red-600" role="alert">
+          {submitError}
+        </p>
+      ) : null}
+
       <button
         type="submit"
-        className="flex min-h-16 w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 px-6 text-xl font-bold text-white shadow-lg shadow-orange-500/30 transition hover:bg-orange-600 focus:outline-none focus:ring-4 focus:ring-orange-300 active:scale-[0.99]"
+        disabled={submitting}
+        className="flex min-h-16 w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 px-6 text-xl font-bold text-white shadow-lg shadow-orange-500/30 transition hover:bg-orange-600 focus:outline-none focus:ring-4 focus:ring-orange-300 active:scale-[0.99] disabled:opacity-60"
       >
-        <Sparkles className="h-6 w-6" aria-hidden />
-        {addressOnly ? "空き日程を探す" : skipAddress ? "内容を確認して予約する" : "最適な空き日程を探す"}
+        {submitting ? (
+          <Loader2 className="h-6 w-6 animate-spin" aria-hidden />
+        ) : (
+          <Sparkles className="h-6 w-6" aria-hidden />
+        )}
+        {submitting
+          ? "予約を確定しています…"
+          : addressOnly
+            ? "空き日程を探す"
+            : skipAddress
+              ? "内容を確認して予約する"
+              : "最適な空き日程を探す"}
       </button>
     </form>
   );
@@ -841,7 +868,7 @@ export function BookingFlow({
   requireTwoWorkers,
   onRestart,
 }: BookingFlowProps) {
-  const [step, setStep] = useState<Step>(1);
+  const [step, setStep] = useState(1);
   const [values, setValues] = useState<FormValues>({
     address: "",
     parking: "",
@@ -855,8 +882,12 @@ export function BookingFlow({
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const isStaff = mode === "staff";
   const staffPhone = isStaff && addressFirst;
+  const stepLabels = staffPhone
+    ? ["住所入力", "日程選択", "お客様情報", "予約完了"]
+    : ["情報入力", "日程選択", "予約完了"];
+  const doneStep = staffPhone ? 4 : 3;
 
-  const go = (next: Step) => {
+  const go = (next: number) => {
     setStep(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -886,7 +917,7 @@ export function BookingFlow({
       if (!res.ok) throw new Error(data.error || "確定に失敗しました");
       setBooked(pending);
       setPending(null);
-      go(3);
+      go(doneStep);
     } catch (e) {
       setConfirmError(e instanceof Error ? e.message : "確定に失敗しました");
     } finally {
@@ -908,7 +939,7 @@ export function BookingFlow({
             {isStaff ? "電話口・社内用 訪問調査 日程調整" : "お問合せ・訪問調査 日程調整"}
           </h1>
           <div className="mt-5">
-            <StepIndicator step={step} />
+            <StepIndicator step={step} labels={stepLabels} />
           </div>
         </div>
       </header>
@@ -945,14 +976,15 @@ export function BookingFlow({
             onChange={setValues}
             emailOptional={emailOptional}
             skipAddress
+            submitting={confirming}
+            submitError={confirmError}
             onSubmit={() => void confirmBooking()}
           />
         )}
 
-        {step === 3 && booked && <DoneStep slot={booked} values={values} />}
-        {!staffPhone && step === 3 && booked && null}
+        {step === doneStep && booked && <DoneStep slot={booked} values={values} />}
 
-        {isStaff && step === 3 && booked && (
+        {isStaff && step === doneStep && booked && (
           <p className="mt-6 text-center text-sm">
             <a href="/admin/bookings" className="font-bold text-blue-900 underline-offset-2 hover:underline">
               予約一覧を見る
