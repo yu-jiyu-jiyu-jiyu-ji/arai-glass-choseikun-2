@@ -605,7 +605,9 @@ function ScheduleStep({
 
         {open && (
           <div id="calendar-panel" className="border-t-2 border-slate-100 p-4">
-            <p className="mb-3 text-sm text-slate-600">ご都合のよい時間をタップしてください。色のついた枠が空いている時間です。</p>
+            <p className="mb-3 text-sm text-slate-600">
+              ご都合のよい時間をタップしてください。色のついた枠が空いている時間です。「次へ」で最大探索日数分まで進めます。
+            </p>
             <div className="mb-3 flex items-center justify-between gap-2">
               <button
                 type="button"

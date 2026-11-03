@@ -157,15 +157,16 @@ export async function pushBookingToCalendars(
 
         const travelInMin = await driveMinutesSafe(anchorA.latLng, customerLatLng);
         const travelOutMin = await driveMinutesSafe(customerLatLng, anchorB.latLng);
+        const postBuffer = settings.bufferMinutes ?? 0;
         const inDuration = travelInMin + travelBuffer;
         const outDuration = travelOutMin + travelBuffer;
+        const workdayStart = jstWallOnSameDay(bookingStart, settings.workdayStartHour, 0);
 
-        // 到着移動: 調査開始で終わる。事務所起点なら就業前スタート可
+        // 到着移動: 調査開始で終わる。就業開始より前には始めない
         const travelInEnd = bookingStart;
         let travelInStart = new Date(travelInEnd.getTime() - inDuration * 60_000);
-        if (anchorA.fromSite && travelInStart < anchorA.at) {
-          travelInStart = new Date(anchorA.at);
-        }
+        const earliestLeave = anchorA.fromSite ? anchorA.at : workdayStart;
+        if (travelInStart < earliestLeave) travelInStart = new Date(earliestLeave);
 
         if (travelInEnd > travelInStart) {
           const id = await insertCalendarEvent(refresh, {
@@ -208,8 +209,8 @@ export async function pushBookingToCalendars(
         });
         created.push(siteId);
 
-        // 出発移動: 次現地 or 帰社。直後の他予定より前で打ち切り（被り防止）
-        const travelOutStart = bookingEnd;
+        // 出発移動: 調査後バッファのあと開始。直後の他予定より前で打ち切り
+        const travelOutStart = new Date(bookingEnd.getTime() + postBuffer * 60_000);
         let travelOutEnd = new Date(travelOutStart.getTime() + outDuration * 60_000);
         const hardCap =
           nextBusy && nextBusy.start < anchorB.at ? nextBusy.start : anchorB.at;

@@ -213,7 +213,7 @@ export default function SettingsPage() {
           ))}
         </div>
         <p className="text-xs leading-relaxed text-slate-600">
-          初期探索日数＝おすすめが揃ったら打ち切る最短日数。最大探索日数＝カレンダー（TimeRex）に並べる日数／探索上限。
+          調査後バッファ＝現地終了後、帰社・次移動までの空き。移動バッファ＝移動時間に上乗せ。就業開始より前の移動は出しません。最大探索日数＝TimeRexに並べる日数です。
         </p>
         <div>
           <p className="mb-2 text-sm font-bold">空き枠としてカウントする招待ステータス</p>

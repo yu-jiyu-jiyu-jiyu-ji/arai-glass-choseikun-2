@@ -104,10 +104,9 @@ export type GapSearchInput = {
 };
 
 /**
- * 段階探索つき間検索。
+ * 間検索（最大探索日数まで走査）。
  * - requireTwoWorkers 時は同時刻に2人空いている枠のみ採用
- * - TimeRex 用に最低 initialSearchDays は必ず走査（打ち切らない）
- * - おすすめが揃っていなければ maxSearchDays まで延長
+ * - 到着移動は就業開始以降／出発移動は調査後バッファのあと
  * - 時刻・日付は Asia/Tokyo
  */
 export async function runGapSearch(input: GapSearchInput): Promise<{
@@ -172,26 +171,31 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
         if (!b.isOffice && deltaT >= settings.detourThresholdMinutes) continue;
 
         const travelBuffer = settings.travelBufferMinutes ?? 0;
+        const postBuffer = settings.bufferMinutes ?? 0;
         const inNeed = travelIn + travelBuffer;
-        const outNeed = travelOut + travelBuffer + settings.bufferMinutes;
+        // 調査後バッファのあとに出発移動（移動バッファ込み）
+        const outNeed = postBuffer + travelOut + travelBuffer;
 
-        // 到着移動: 直前現地のあと／事務所起点。就業開始前の移動は許可
+        const dayStart = jstWallOnSameDay(start, settings.workdayStartHour, 0);
+        // 到着移動は就業開始以降のみ（就業前スタート禁止）
+        const earliestLeave = a.fromSite ? a.at : dayStart;
         const travelInStart = new Date(start.getTime() - inNeed * 60_000);
-        if (a.fromSite && travelInStart < a.at) continue;
+        if (travelInStart < earliestLeave) continue;
         if (isBlocked(events, travelInStart, start)) continue;
 
-        // 出発移動: 次の「任意の予定」より前に収める（会議などとの被り禁止）
+        // 出発移動: 調査終了＋調査後バッファのあと開始。次の予定より前に収める
+        const travelOutStart = new Date(end.getTime() + postBuffer * 60_000);
         const busyDeadline = nextEventStart(events, end);
         const outDeadline =
           busyDeadline && busyDeadline < b.at ? busyDeadline : b.at;
-        const travelOutEnd = new Date(end.getTime() + outNeed * 60_000);
+        const travelOutEnd = new Date(
+          travelOutStart.getTime() + (travelOut + travelBuffer) * 60_000,
+        );
         if (travelOutEnd > outDeadline) continue;
         if (isBlocked(events, end, travelOutEnd)) continue;
 
-        const needed =
-          inNeed + settings.surveyMinutes + outNeed;
-        const available = (outDeadline.getTime() - (a.fromSite ? a.at : travelInStart).getTime()) /
-          60_000;
+        const needed = inNeed + settings.surveyMinutes + outNeed;
+        const available = (outDeadline.getTime() - earliestLeave.getTime()) / 60_000;
         if (needed > available) continue;
 
         const score = travelIn * 2 + deltaT * 3 + (worker.surveyMain ? 0 : 15);
@@ -232,17 +236,7 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
       }
     }
 
-    const enough =
-      candidates.length >= settings.recommendedCount &&
-      [...candidates]
-        .sort((a, b) => a.start.getTime() - b.start.getTime())
-        .slice(0, settings.recommendedCount).length >= settings.recommendedCount;
-
-    // 初期探索日数は必ず走査（TimeRex 用）。揃っていればそこで打ち切り。
-    // 不足なら maxSearchDays まで継続。
-    if (daysScanned >= settings.initialSearchDays && enough) {
-      break;
-    }
+    // TimeRex は最大探索日数まで必ず埋めるため、途中打ち切りしない
   }
 
   return { candidates, daysScanned };
