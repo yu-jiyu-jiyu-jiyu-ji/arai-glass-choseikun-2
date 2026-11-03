@@ -21,9 +21,9 @@ export type AppSettings = {
   lunchEndHour: number;
   /** 現地調査時間（分） */
   surveyMinutes: number;
-  /** 調査後バッファ（分） */
+  /** 調査後バッファ（分）。現地枠に含めカレンダー登録（調査＋この分） */
   bufferMinutes: number;
-  /** 移動バッファ（分）。移動判定・カレンダー移動枠に加味 */
+  /** 移動バッファ（分）。空き判定の移動所要にのみ加味（カレンダーには書かない） */
   travelBufferMinutes: number;
   slotIntervalMinutes: number;
   detourThresholdMinutes: number;

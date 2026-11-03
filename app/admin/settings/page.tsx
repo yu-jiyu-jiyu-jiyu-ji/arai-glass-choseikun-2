@@ -213,7 +213,7 @@ export default function SettingsPage() {
           ))}
         </div>
         <p className="text-xs leading-relaxed text-slate-600">
-          調査後バッファ＝現地終了後、帰社・次移動までの空き。移動バッファ＝移動時間に上乗せ。就業開始より前の移動は出しません。最大探索日数＝TimeRexに並べる日数です。
+          現地のカレンダー登録＝調査時間＋調査後バッファ。移動バッファは空き判定の計算のみ（移動予定はカレンダーに書きません）。ブロック後も事務所からの移動を見ます。最大探索日数＝TimeRexの日数です。
         </p>
         <div>
           <p className="mb-2 text-sm font-bold">空き枠としてカウントする招待ステータス</p>

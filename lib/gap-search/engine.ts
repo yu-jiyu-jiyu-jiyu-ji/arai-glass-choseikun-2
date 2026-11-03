@@ -13,9 +13,14 @@ function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && bStart < aEnd;
 }
 
+/** 現地としてカレンダー／塞がりに使う分（調査＋調査後バッファ） */
+function siteBlockMinutes(settings: AppSettings) {
+  return settings.surveyMinutes + (settings.bufferMinutes ?? 0);
+}
+
 /**
  * 就業時間内の候補開始時刻のみ列挙（JST）。
- * 「開始＋調査時間が終了時刻を超える」枠は出さない。
+ * 「開始＋現地ブロック（調査＋調査後バッファ）が就業終了を超える」枠は出さない。
  */
 function candidateStartsOnDay(day: Date, settings: AppSettings): Date[] {
   const starts: Date[] = [];
@@ -25,13 +30,12 @@ function candidateStartsOnDay(day: Date, settings: AppSettings): Date[] {
     lunchStartHour,
     lunchEndHour,
     slotIntervalMinutes,
-    surveyMinutes,
   } = settings;
-
+  const block = siteBlockMinutes(settings);
   const dayEndMinutes = workdayEndHour * 60;
   for (
     let minutes = workdayStartHour * 60;
-    minutes + surveyMinutes <= dayEndMinutes;
+    minutes + block <= dayEndMinutes;
     minutes += slotIntervalMinutes
   ) {
     const h = Math.floor(minutes / 60);
@@ -77,7 +81,6 @@ function findAnchorA(
   settings: AppSettings,
 ): { at: Date; latLng: LatLng; fromSite: boolean } {
   const dayStart = jstWallOnSameDay(slotStart, settings.workdayStartHour, 0);
-  // 前日の現地は持ち越さない（翌朝は事務所起点）。短い空きが不当に潰れるのを防ぐ
   const sites = siteEvents(events)
     .filter((e) => e.end <= slotStart && e.end.getTime() >= dayStart.getTime())
     .sort((a, b) => b.end.getTime() - a.end.getTime());
@@ -89,13 +92,13 @@ function findAnchorA(
 
 function findAnchorB(
   events: CalendarEvent[],
-  slotEnd: Date,
+  siteBlockEnd: Date,
   office: LatLng,
   settings: AppSettings,
 ): { at: Date; latLng: LatLng; isOffice: boolean } {
-  const dayEnd = jstWallOnSameDay(slotEnd, settings.workdayEndHour, 0);
+  const dayEnd = jstWallOnSameDay(siteBlockEnd, settings.workdayEndHour, 0);
   const sites = siteEvents(events)
-    .filter((e) => e.start >= slotEnd && e.start.getTime() <= dayEnd.getTime())
+    .filter((e) => e.start >= siteBlockEnd && e.start.getTime() <= dayEnd.getTime())
     .sort((a, b) => a.start.getTime() - b.start.getTime());
   if (sites[0]?.latLng) {
     return { at: sites[0].start, latLng: sites[0].latLng, isOffice: false };
@@ -117,9 +120,10 @@ export type GapSearchInput = {
 
 /**
  * 間検索（最大探索日数まで走査）。
- * - requireTwoWorkers 時は同時刻に2人空いている枠のみ採用
- * - 到着移動は就業開始以降／出発移動は調査後バッファのあと
- * - 時刻・日付は Asia/Tokyo
+ * - 現地ブロック = 調査 + 調査後バッファ（就業内に収める）
+ * - 作業前移動 = Maps + 移動バッファ（直前現地 or 事務所。ブロック後も事務所起点）
+ * - 作業後移動 = 次現地があるときのみ枠判定に使用。帰社所要では枠を落とさない
+ * - 移動はカレンダー非表示（計算のみ）
  */
 export async function runGapSearch(input: GapSearchInput): Promise<{
   candidates: SlotCandidate[];
@@ -131,6 +135,8 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
   const candidates: SlotCandidate[] = [];
   const activeWorkers = input.workers.filter((w) => w.active);
   const now = new Date();
+  const travelBuffer = settings.travelBufferMinutes ?? 0;
+  const siteBlock = siteBlockMinutes(settings);
 
   let daysScanned = 0;
   const rangeStart = startOfJstDay(input.fromDate);
@@ -142,7 +148,9 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
 
     for (const start of candidateStartsOnDay(day, settings)) {
       if (start.getTime() <= now.getTime()) continue;
+      // 顧客向け枠の終了 = 調査時間のみ（バッファは現地ブロック側）
       const end = new Date(start.getTime() + settings.surveyMinutes * 60_000);
+      const siteBlockEnd = new Date(start.getTime() + siteBlock * 60_000);
 
       type Scored = {
         workerId: string;
@@ -155,10 +163,11 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
 
       for (const worker of activeWorkers) {
         const events = input.eventsByWorker.get(worker.id) ?? [];
-        if (isBlocked(events, start, end)) continue;
+        // 現地ブロック全体が既存予定と被らないこと
+        if (isBlocked(events, start, siteBlockEnd)) continue;
 
         const a = findAnchorA(events, start, office, settings);
-        const b = findAnchorB(events, end, office, settings);
+        const b = findAnchorB(events, siteBlockEnd, office, settings);
 
         const travelIn = await getDriveMinutes(
           a.latLng,
@@ -176,65 +185,55 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
           ? 0
           : await getDriveMinutes(a.latLng, b.latLng, cache, input.driveFetcher);
         const viaCustomer = travelIn + travelOut;
-        // 帰社のみのときは迂回判定なし（次現地があるときだけ ΔT）
         const deltaT = b.isOffice ? 0 : Math.max(0, viaCustomer - direct);
 
-        // ΔT閾値は迂回の大きさだけを見る（移動バッファは所要時間判定側）
         if (!b.isOffice && deltaT >= settings.detourThresholdMinutes) continue;
 
-        const travelBuffer = settings.travelBufferMinutes ?? 0;
-        const postBuffer = settings.bufferMinutes ?? 0;
         const dayStart = jstWallOnSameDay(start, settings.workdayStartHour, 0);
         const prev = prevEventBefore(events, start, dayStart);
+        const inNeed = travelIn + travelBuffer;
 
         /**
-         * 到着移動:
-         * - 直前が現地 → そこからの移動が必須
-         * - 直前がブロック等の busy → その終了時点で空き、事務所からの到着移動は要求しない
-         *   （ブロック中に移動させると枠が消えるため）
-         * - 朝から空き → 就業開始以降に事務所から移動
+         * 作業前移動（Maps＋移動バッファ）:
+         * - 直前現地 → そこから
+         * - それ以外（朝空き／ブロック・会議のあと）→ 事務所から
+         *   ブロック後も移動が必要なので earliestLeave = 直前終了 or 就業開始
          */
-        let effectiveTravelIn = travelIn;
-        let inNeed = travelIn + travelBuffer;
-        if (a.fromSite) {
-          const travelInStart = new Date(start.getTime() - inNeed * 60_000);
-          if (travelInStart < a.at) continue;
-          if (isBlocked(events, travelInStart, start)) continue;
-        } else if (prev && prev.kind !== "site") {
-          effectiveTravelIn = 0;
-          inNeed = 0;
-        } else {
-          const travelInStart = new Date(start.getTime() - inNeed * 60_000);
-          if (travelInStart < dayStart) continue;
-          if (isBlocked(events, travelInStart, start)) continue;
-        }
+        const earliestLeave = a.fromSite
+          ? a.at
+          : prev
+            ? prev.end > dayStart
+              ? prev.end
+              : dayStart
+            : dayStart;
+        const travelInStart = new Date(start.getTime() - inNeed * 60_000);
+        if (travelInStart < earliestLeave) continue;
+        if (travelInStart < dayStart) continue;
+        if (isBlocked(events, travelInStart, start)) continue;
 
-        const busyDeadline = nextEventStart(events, end);
+        const busyDeadline = nextEventStart(events, siteBlockEnd);
         const outDeadline =
           busyDeadline && busyDeadline < b.at ? busyDeadline : b.at;
 
-        // 調査後バッファは次予定までに必ず確保
-        const postBufferEnd = new Date(end.getTime() + postBuffer * 60_000);
-        if (postBufferEnd > outDeadline) continue;
-        if (isBlocked(events, end, postBufferEnd)) continue;
+        // 現地ブロックが次予定／就業終了までに収まること
+        if (siteBlockEnd > outDeadline) continue;
 
         if (!b.isOffice) {
-          // 次が現地: バッファ後の移動が次現地までに収まること
+          // 次が現地: 現地ブロック後の移動（Maps＋移動バッファ）が次現地までに収まること
           const travelOutEnd = new Date(
-            postBufferEnd.getTime() + (travelOut + travelBuffer) * 60_000,
+            siteBlockEnd.getTime() + (travelOut + travelBuffer) * 60_000,
           );
           if (travelOutEnd > outDeadline) continue;
-          if (isBlocked(events, postBufferEnd, travelOutEnd)) continue;
+          if (isBlocked(events, siteBlockEnd, travelOutEnd)) continue;
         }
-        // 帰社のみ: 移動所要で枠を落とさない（カレンダー登録時に次予定前で打ち切り）
+        // 帰社: 所要では枠を落とさない（現地ブロックが就業内／次予定前ならOK）
 
-        const score =
-          effectiveTravelIn * 2 + deltaT * 3 + (worker.surveyMain ? 0 : 15);
+        const score = travelIn * 2 + deltaT * 3 + (worker.surveyMain ? 0 : 15);
 
         scored.push({
           workerId: worker.id,
           deltaTMinutes: deltaT,
-          travelInMinutes: effectiveTravelIn,
+          travelInMinutes: travelIn,
           travelOutMinutes: travelOut,
           score,
         });
@@ -242,8 +241,7 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
 
       scored.sort((x, y) => x.score - y.score);
 
-      const needTwo =
-        input.requireTwoWorkers ?? settings.requireTwoWorkers;
+      const needTwo = input.requireTwoWorkers ?? settings.requireTwoWorkers;
       if (needTwo) {
         if (scored.length < 2) continue;
         const [first, second] = scored;
@@ -266,8 +264,6 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
         });
       }
     }
-
-    // TimeRex は最大探索日数まで必ず埋めるため、途中打ち切りしない
   }
 
   return { candidates, daysScanned };
@@ -282,12 +278,12 @@ export function listWorkHourLabels(settings: AppSettings): string[] {
     lunchStartHour,
     lunchEndHour,
     slotIntervalMinutes,
-    surveyMinutes,
   } = settings;
+  const block = siteBlockMinutes(settings);
   const dayEndMinutes = workdayEndHour * 60;
   for (
     let minutes = workdayStartHour * 60;
-    minutes + surveyMinutes <= dayEndMinutes;
+    minutes + block <= dayEndMinutes;
     minutes += slotIntervalMinutes
   ) {
     const h = Math.floor(minutes / 60);
@@ -358,7 +354,6 @@ export function toPublicResponse(
   const days: { date: string; slots: PublicSlot[] }[] = [];
   const seen = new Set<string>();
 
-  // 直近から初期探索日数分は、空き0でも必ず行を作る（TimeRex）
   if (opts?.fromDate && opts.settings && (opts.calendarSearchableDays ?? 0) > 0) {
     for (const key of listSearchableDateKeys(
       opts.fromDate,
@@ -370,7 +365,6 @@ export function toPublicResponse(
     }
   }
 
-  // それ以降に見つかった空き日も追加
   for (const [date, slots] of [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     if (seen.has(date)) continue;
     days.push({ date, slots });
