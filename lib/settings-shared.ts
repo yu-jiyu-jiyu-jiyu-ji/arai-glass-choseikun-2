@@ -23,7 +23,7 @@ export type AppSettings = {
   surveyMinutes: number;
   /** 調査後バッファ（分）。現地枠に含めカレンダー登録（調査＋この分） */
   bufferMinutes: number;
-  /** 移動バッファ（分）。空き判定の移動所要にのみ加味（カレンダーには書かない） */
+  /** 移動バッファ（分）。空き判定の移動所要にのみ加味（カレンダーの移動予定には足さない） */
   travelBufferMinutes: number;
   slotIntervalMinutes: number;
   detourThresholdMinutes: number;

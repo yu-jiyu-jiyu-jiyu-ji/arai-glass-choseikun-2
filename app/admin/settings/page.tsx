@@ -213,7 +213,7 @@ export default function SettingsPage() {
           ))}
         </div>
         <p className="text-xs leading-relaxed text-slate-600">
-          現地のカレンダー登録＝調査時間＋調査後バッファ。移動バッファは空き判定の計算のみ（移動予定はカレンダーに書きません）。ブロック後も事務所からの移動を見ます。最大探索日数＝TimeRexの日数です。
+          現地のカレンダー登録＝調査＋調査後バッファ。移動（車）も登録します（長さは Maps 分のみ）。移動バッファは空き判定の上乗せだけでカレンダーには足しません。他予定と移動が被る枠は出しません。
         </p>
         <div>
           <p className="mb-2 text-sm font-bold">空き枠としてカウントする招待ステータス</p>

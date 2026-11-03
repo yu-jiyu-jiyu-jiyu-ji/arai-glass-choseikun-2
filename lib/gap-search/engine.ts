@@ -121,9 +121,9 @@ export type GapSearchInput = {
 /**
  * 間検索（最大探索日数まで走査）。
  * - 現地ブロック = 調査 + 調査後バッファ（就業内に収める）
- * - 作業前移動 = Maps + 移動バッファ（直前現地 or 事務所。ブロック後も事務所起点）
- * - 作業後移動 = 次現地があるときのみ枠判定に使用。帰社所要では枠を落とさない
- * - 移動はカレンダー非表示（計算のみ）
+ * - 作業前／後の移動 = Maps + 移動バッファ（他予定と被らないこと）
+ * - 移動バッファは判定用。カレンダーの移動予定は Maps 分のみ
+ * - 帰社は就業終了超え可。ただし直後の他予定とは被らせない
  */
 export async function runGapSearch(input: GapSearchInput): Promise<{
   candidates: SlotCandidate[];
@@ -212,21 +212,30 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
         if (isBlocked(events, travelInStart, start)) continue;
 
         const busyDeadline = nextEventStart(events, siteBlockEnd);
-        const outDeadline =
-          busyDeadline && busyDeadline < b.at ? busyDeadline : b.at;
-
-        // 現地ブロックが次予定／就業終了までに収まること
-        if (siteBlockEnd > outDeadline) continue;
-
+        // 現地ブロックは次予定／（帰社で次予定なしなら）就業終了までに収める
         if (!b.isOffice) {
-          // 次が現地: 現地ブロック後の移動（Maps＋移動バッファ）が次現地までに収まること
-          const travelOutEnd = new Date(
-            siteBlockEnd.getTime() + (travelOut + travelBuffer) * 60_000,
-          );
-          if (travelOutEnd > outDeadline) continue;
-          if (isBlocked(events, siteBlockEnd, travelOutEnd)) continue;
+          const cap = busyDeadline && busyDeadline < b.at ? busyDeadline : b.at;
+          if (siteBlockEnd > cap) continue;
+        } else if (busyDeadline && siteBlockEnd > busyDeadline) {
+          continue;
+        } else if (!busyDeadline && siteBlockEnd > b.at) {
+          continue;
         }
-        // 帰社: 所要では枠を落とさない（現地ブロックが就業内／次予定前ならOK）
+
+        // 作業後移動（Maps＋移動バッファ）が他予定と被らないこと
+        const outNeed = travelOut + travelBuffer;
+        const travelOutEnd = new Date(siteBlockEnd.getTime() + outNeed * 60_000);
+        if (!b.isOffice) {
+          const cap = busyDeadline && busyDeadline < b.at ? busyDeadline : b.at;
+          if (travelOutEnd > cap) continue;
+          if (isBlocked(events, siteBlockEnd, travelOutEnd)) continue;
+        } else if (busyDeadline) {
+          // 帰社: 就業終了超えは可。直後の会議等より前に収める
+          if (travelOutEnd > busyDeadline) continue;
+          if (isBlocked(events, siteBlockEnd, travelOutEnd)) continue;
+        } else if (isBlocked(events, siteBlockEnd, travelOutEnd)) {
+          continue;
+        }
 
         const score = travelIn * 2 + deltaT * 3 + (worker.surveyMain ? 0 : 15);
 
