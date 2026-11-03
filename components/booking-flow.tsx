@@ -471,8 +471,13 @@ function ScheduleStep({
             requireTwoWorkers,
           }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "検索に失敗しました");
+        const { readApiJson } = await import("@/lib/api-client");
+        const data = await readApiJson<{
+          recommended: ApiSlot[];
+          days: ApiDay[];
+          meta?: { workHours?: string[] };
+          error?: string;
+        }>(res);
         if (cancelled) return;
         const rec: Recommended[] = (data.recommended as ApiSlot[]).map((s, i) => ({
           ...toSlot(s.start, s.end, s.workerIds),
@@ -487,7 +492,10 @@ function ScheduleStep({
         const hours = (data.meta?.workHours as string[] | undefined)?.filter(Boolean);
         setWorkHours(hours && hours.length > 0 ? hours : HOURS);
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "検索に失敗しました");
+        if (!cancelled) {
+          const { toUserFacingError } = await import("@/lib/api-client");
+          setError(toUserFacingError(e, "検索に失敗しました"));
+        }
       } finally {
         if (!cancelled) setSearching(false);
       }
@@ -949,13 +957,14 @@ export function BookingFlow({
           linkToken,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "確定に失敗しました");
+      const { readApiJson } = await import("@/lib/api-client");
+      await readApiJson(res);
       setBooked(pending);
       setPending(null);
       go(doneStep);
     } catch (e) {
-      setConfirmError(e instanceof Error ? e.message : "確定に失敗しました");
+      const { toUserFacingError } = await import("@/lib/api-client");
+      setConfirmError(toUserFacingError(e, "予約の確定に失敗しました。しばらくしてから再度お試しください。"));
     } finally {
       setConfirming(false);
     }

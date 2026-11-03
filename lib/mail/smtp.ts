@@ -43,13 +43,33 @@ export async function sendMail(opts: {
       pass: smtpPassword(),
     },
   });
-  const info = await transporter.sendMail({
-    from: fromAddress(),
-    to: opts.to,
-    subject: opts.subject,
-    text: opts.text,
-    html: opts.html,
-    attachments: opts.attachments,
-  });
+  const info = await withTimeout(
+    transporter.sendMail({
+      from: fromAddress(),
+      to: opts.to,
+      subject: opts.subject,
+      text: opts.text,
+      html: opts.html,
+      attachments: opts.attachments,
+    }),
+    12_000,
+    `SMTP送信タイムアウト (${opts.to})`,
+  );
   console.info(`[mail] sent to=${opts.to} messageId=${info.messageId || "(none)"}`);
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(message)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
 }

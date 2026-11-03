@@ -16,7 +16,7 @@ function authorized(req: Request): boolean {
  */
 export async function POST(req: Request) {
   if (!authorized(req)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "認証に失敗しました" }, { status: 401 });
   }
   try {
     const body = (await req.json()) as {
