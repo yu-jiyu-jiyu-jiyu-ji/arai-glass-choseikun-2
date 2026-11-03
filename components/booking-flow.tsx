@@ -513,9 +513,18 @@ function ScheduleStep({
         <p className="text-lg font-bold text-red-600" role="alert">
           {error}
         </p>
-        <button type="button" onClick={onBack} className="text-base font-bold text-blue-900 underline">
-          入力内容を修正する
-        </button>
+        <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+          <button
+            type="button"
+            onClick={() => setReloadToken((n) => n + 1)}
+            className="min-h-12 rounded-xl bg-orange-500 px-6 text-base font-bold text-white hover:bg-orange-600"
+          >
+            再検索
+          </button>
+          <button type="button" onClick={onBack} className="text-base font-bold text-blue-900 underline">
+            入力内容を修正する
+          </button>
+        </div>
       </div>
     );
   }

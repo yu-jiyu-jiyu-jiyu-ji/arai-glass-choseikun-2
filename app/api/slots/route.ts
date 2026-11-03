@@ -71,17 +71,18 @@ export async function POST(req: Request) {
       settings.maxSearchDays,
     );
 
-    // カレンダー取得できた職人だけ使う（失敗＝全日空きの誤判定を防ぐ）
-    workers = workers.filter((w) => eventsByWorker.has(w.id));
-    if (workers.length === 0) {
-      return NextResponse.json(
-        {
-          error:
-            "カレンダーを取得できる職人がいません。OAuth連携や権限を確認してください。",
-        },
-        { status: 400 },
-      );
+    const needTwo = requireTwoWorkers ?? settings.requireTwoWorkers;
+    const calendarOk = workers.filter((w) => eventsByWorker.has(w.id));
+    const CALENDAR_FETCH_ERROR =
+      "カレンダーの取得に失敗しました。「再検索」ボタンを押して再取得してください。";
+
+    // 0人成功、またはペアなのに1人しか取れない → 同じ案内
+    if (calendarOk.length === 0 || (needTwo && calendarOk.length < 2)) {
+      return NextResponse.json({ error: CALENDAR_FETCH_ERROR }, { status: 400 });
     }
+
+    // カレンダー取得できた職人だけ使う（失敗＝全日空きの誤判定を防ぐ）
+    workers = calendarOk;
 
     const eventsCountByWorker: Record<string, number> = {};
     for (const w of workers) {
