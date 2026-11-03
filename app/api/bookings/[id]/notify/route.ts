@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 import { sendBookingNotifications } from "@/lib/mail/booking-notify";
-import { smtpConfigured } from "@/lib/mail/smtp";
+import { mailConfigured } from "@/lib/mail/smtp";
 import { loadBookings } from "@/lib/store";
 
 /** 予約通知メールの再送（切り分け・取りこぼし救済） */
 export async function POST(_req: Request, ctx: RouteContext<"/api/bookings/[id]/notify">) {
   try {
     const { id } = await ctx.params;
-    if (!smtpConfigured()) {
+    if (!mailConfigured()) {
       return NextResponse.json(
-        { error: "SMTP が未設定です（SMTP_HOST / SMTP_USER / SMTP_PASSWORD）" },
+        {
+          error:
+            "メール送信が未設定です（RESEND_API_KEY または SMTP_HOST / SMTP_USER / SMTP_PASSWORD）",
+        },
         { status: 503 },
       );
     }

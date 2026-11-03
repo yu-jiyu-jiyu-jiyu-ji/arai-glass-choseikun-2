@@ -42,18 +42,26 @@
 | `TOKENS_ISSUE_API_KEY` | `POST /api/tokens/issue` の Bearer / x-api-key |
 | `NEXT_PUBLIC_APP_ORIGIN` | 公開ORIGIN（例: `https://….onrender.com`） |
 
-## メールリマインド（SMTP + Cron）
+## メール（予約通知・リマインド）+ Cron
 
-日程調整ツールと同じ SMTP 変数を Render に入れる。
+**重要: Render Free は 2025-09 以降、SMTP ポート（25/465/587）への送信が遮断されます。**  
+Gmail SMTP だけではタイムアウトして届きません。次のどちらかが必要です。
+
+1. **推奨（Free のまま）**: [Resend](https://resend.com) の API キーを入れる（HTTPS なので通る）
+2. **代替**: Web Service を有料プランに上げて、従来どおり SMTP を使う
 
 | 変数名 | 入れるもの |
 |--------|------------|
-| `SMTP_HOST` | 例: `smtp.gmail.com` |
+| `RESEND_API_KEY` | Resend の API キー（Free 向け推奨） |
+| `RESEND_FROM` または `SMTP_FROM` | 差出人（Resend は検証済みドメイン推奨。試験は `onboarding@resend.dev`） |
+| `SMTP_HOST` | 例: `smtp.gmail.com`（有料 Render / ローカル） |
 | `SMTP_PORT` | 例: `587` |
 | `SMTP_USER` | 送信アカウント |
 | `SMTP_PASSWORD` | アプリパスワード等 |
 | `SMTP_FROM` | 差出人（任意。未設定時は SMTP_USER） |
 | `CRON_SECRET` | 任意の長い乱数（Cron 呼び出し認証用） |
+
+取りこぼし再送: `POST /api/bookings/{id}/notify`
 
 ### Render Cron Job
 

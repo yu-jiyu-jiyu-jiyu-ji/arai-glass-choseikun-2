@@ -3,7 +3,7 @@ import { APP_CONFIG } from "@/lib/config";
 import { getDb } from "@/lib/firebase";
 import { oauthConfigured } from "@/lib/google/oauth";
 import { mapsConfigured } from "@/lib/google/maps";
-import { smtpConfigured } from "@/lib/mail/smtp";
+import { mailConfigured, resendConfigured, smtpConfigured } from "@/lib/mail/smtp";
 import { loadWorkers } from "@/lib/store";
 
 export async function GET() {
@@ -15,6 +15,10 @@ export async function GET() {
     oauthConfigured: oauthConfigured(),
     mapsConfigured: mapsConfigured(),
     smtpConfigured: smtpConfigured(),
+    resendConfigured: resendConfigured(),
+    mailConfigured: mailConfigured(),
+    /** デプロイ確認用 */
+    buildTag: "mail-resend-v1",
   };
 
   try {

@@ -2,7 +2,7 @@ import { loadSettings } from "../settings";
 import { loadWorkers } from "../store";
 import { jstParts } from "../time/jst";
 import type { Booking } from "../types";
-import { sendMail, smtpConfigured } from "./smtp";
+import { mailConfigured, sendMail } from "./smtp";
 
 export type MailNotifyResult = {
   smtpConfigured: boolean;
@@ -29,13 +29,13 @@ function escapeHtml(s: string) {
 /** 予約成立時: 担当職人へ通知 + 顧客へ案内（メールがある場合） */
 export async function sendBookingNotifications(booking: Booking): Promise<MailNotifyResult> {
   const result: MailNotifyResult = {
-    smtpConfigured: smtpConfigured(),
+    smtpConfigured: mailConfigured(),
     staff: [],
     customer: null,
   };
 
   if (!result.smtpConfigured) {
-    console.warn("[mail] SMTP未設定のため予約通知をスキップ");
+    console.warn("[mail] メール未設定のため予約通知をスキップ（RESEND_API_KEY または SMTP）");
     return result;
   }
 
