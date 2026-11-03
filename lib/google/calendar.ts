@@ -40,6 +40,18 @@ function classifyEvent(summary: string, location: string | null): "site" | "busy
   return "busy";
 }
 
+/**
+ * Googleカレンダーの「予約スケジュール」（UI上は格子アイコンの薄い枠）。
+ * 実予定（色付きの会議など）ではないので空き判定から除外する。
+ * 例: 「アポイント日程」「アポイント日程 - 魚谷優治」
+ */
+function isGoogleAppointmentSchedule(title: string): boolean {
+  const t = title.trim();
+  if (t.includes("アポイント日程")) return true;
+  if (/^Appointment schedule\b/i.test(t)) return true;
+  return false;
+}
+
 const geocodeCache = new Map<string, LatLng | null>();
 
 async function geocodeCached(address: string): Promise<LatLng | null> {
@@ -101,6 +113,9 @@ export async function listCalendarEvents(opts: {
     // 調整くんでキャンセル印を付けた予定は空きとして再利用可
     if (title.startsWith("【キャンセル】")) continue;
 
+    // Google予約スケジュール（アポイント日程）は実予定ではない → 無視
+    if (isGoogleAppointmentSchedule(title)) continue;
+
     // 招待の自ステータスが「空き扱い」なら塞がない
     const selfAttendee = item.attendees?.find((a) => a.self);
     if (selfAttendee?.responseStatus && freeInvite.has(selfAttendee.responseStatus)) {
@@ -108,6 +123,7 @@ export async function listCalendarEvents(opts: {
     }
 
     // 住所なし・移動・ブロックも busy。現地（住所あり）は site
+    // ※ 【BIP】会議など色付きの通常予定はここに来る
     const kind = classifyEvent(title, location);
     let latLng: LatLng | null = null;
     if (kind === "site" && location) {
@@ -254,6 +270,7 @@ export async function listManagedCalendarEvents(opts: {
     const location = item.location?.trim() ? item.location.trim() : null;
     const title = item.summary?.trim() || "(無題)";
     if (title.startsWith("【キャンセル】")) continue;
+    if (isGoogleAppointmentSchedule(title)) continue;
     const description = item.description ?? "";
     const priv = item.extendedProperties?.private ?? {};
     const choseikunManaged =
