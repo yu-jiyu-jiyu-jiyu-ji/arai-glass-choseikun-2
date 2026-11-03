@@ -58,6 +58,18 @@ function nextEventStart(events: CalendarEvent[], after: Date): Date | null {
   return hits[0]?.start ?? null;
 }
 
+/** スロット直前の予定（就業開始以降） */
+function prevEventBefore(
+  events: CalendarEvent[],
+  slotStart: Date,
+  dayStart: Date,
+): CalendarEvent | null {
+  const hits = events
+    .filter((e) => e.end <= slotStart && e.end.getTime() >= dayStart.getTime())
+    .sort((a, b) => b.end.getTime() - a.end.getTime());
+  return hits[0] ?? null;
+}
+
 function findAnchorA(
   events: CalendarEvent[],
   slotStart: Date,
@@ -172,38 +184,57 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
 
         const travelBuffer = settings.travelBufferMinutes ?? 0;
         const postBuffer = settings.bufferMinutes ?? 0;
-        const inNeed = travelIn + travelBuffer;
-        // 調査後バッファのあとに出発移動（移動バッファ込み）
-        const outNeed = postBuffer + travelOut + travelBuffer;
-
         const dayStart = jstWallOnSameDay(start, settings.workdayStartHour, 0);
-        // 到着移動は就業開始以降のみ（就業前スタート禁止）
-        const earliestLeave = a.fromSite ? a.at : dayStart;
-        const travelInStart = new Date(start.getTime() - inNeed * 60_000);
-        if (travelInStart < earliestLeave) continue;
-        if (isBlocked(events, travelInStart, start)) continue;
+        const prev = prevEventBefore(events, start, dayStart);
 
-        // 出発移動: 調査終了＋調査後バッファのあと開始。次の予定より前に収める
-        const travelOutStart = new Date(end.getTime() + postBuffer * 60_000);
+        /**
+         * 到着移動:
+         * - 直前が現地 → そこからの移動が必須
+         * - 直前がブロック等の busy → その終了時点で空き、事務所からの到着移動は要求しない
+         *   （ブロック中に移動させると枠が消えるため）
+         * - 朝から空き → 就業開始以降に事務所から移動
+         */
+        let effectiveTravelIn = travelIn;
+        let inNeed = travelIn + travelBuffer;
+        if (a.fromSite) {
+          const travelInStart = new Date(start.getTime() - inNeed * 60_000);
+          if (travelInStart < a.at) continue;
+          if (isBlocked(events, travelInStart, start)) continue;
+        } else if (prev && prev.kind !== "site") {
+          effectiveTravelIn = 0;
+          inNeed = 0;
+        } else {
+          const travelInStart = new Date(start.getTime() - inNeed * 60_000);
+          if (travelInStart < dayStart) continue;
+          if (isBlocked(events, travelInStart, start)) continue;
+        }
+
         const busyDeadline = nextEventStart(events, end);
         const outDeadline =
           busyDeadline && busyDeadline < b.at ? busyDeadline : b.at;
-        const travelOutEnd = new Date(
-          travelOutStart.getTime() + (travelOut + travelBuffer) * 60_000,
-        );
-        if (travelOutEnd > outDeadline) continue;
-        if (isBlocked(events, end, travelOutEnd)) continue;
 
-        const needed = inNeed + settings.surveyMinutes + outNeed;
-        const available = (outDeadline.getTime() - earliestLeave.getTime()) / 60_000;
-        if (needed > available) continue;
+        // 調査後バッファは次予定までに必ず確保
+        const postBufferEnd = new Date(end.getTime() + postBuffer * 60_000);
+        if (postBufferEnd > outDeadline) continue;
+        if (isBlocked(events, end, postBufferEnd)) continue;
 
-        const score = travelIn * 2 + deltaT * 3 + (worker.surveyMain ? 0 : 15);
+        if (!b.isOffice) {
+          // 次が現地: バッファ後の移動が次現地までに収まること
+          const travelOutEnd = new Date(
+            postBufferEnd.getTime() + (travelOut + travelBuffer) * 60_000,
+          );
+          if (travelOutEnd > outDeadline) continue;
+          if (isBlocked(events, postBufferEnd, travelOutEnd)) continue;
+        }
+        // 帰社のみ: 移動所要で枠を落とさない（カレンダー登録時に次予定前で打ち切り）
+
+        const score =
+          effectiveTravelIn * 2 + deltaT * 3 + (worker.surveyMain ? 0 : 15);
 
         scored.push({
           workerId: worker.id,
           deltaTMinutes: deltaT,
-          travelInMinutes: travelIn,
+          travelInMinutes: effectiveTravelIn,
           travelOutMinutes: travelOut,
           score,
         });

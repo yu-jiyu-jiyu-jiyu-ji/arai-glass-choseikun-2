@@ -106,8 +106,20 @@ export async function pushBookingToCalendars(
           )
           .sort((a, b) => a.start.getTime() - b.start.getTime())[0];
 
+        const workdayStart = jstWallOnSameDay(bookingStart, settings.workdayStartHour, 0);
+        // 直前の busy（ブロック等）。事務所起点の到着移動は要求しない
+        const prevBusy = existing
+          .filter(
+            (e) =>
+              e.end <= bookingStart &&
+              e.end.getTime() >= workdayStart.getTime() &&
+              !(e.choseikunManaged && e.choseikunKind === "travel") &&
+              e.kind !== "site",
+          )
+          .sort((a, b) => b.end.getTime() - a.end.getTime())[0];
+
         const anchorA = {
-          at: prevSite?.end ?? jstWallOnSameDay(bookingStart, settings.workdayStartHour, 0),
+          at: prevSite?.end ?? workdayStart,
           latLng: prevSite ? await geocodeSafe(prevSite.location!, office) : office,
           label: prevSite?.location ?? officeLabel,
           fromSite: Boolean(prevSite),
@@ -160,15 +172,15 @@ export async function pushBookingToCalendars(
         const postBuffer = settings.bufferMinutes ?? 0;
         const inDuration = travelInMin + travelBuffer;
         const outDuration = travelOutMin + travelBuffer;
-        const workdayStart = jstWallOnSameDay(bookingStart, settings.workdayStartHour, 0);
 
-        // 到着移動: 調査開始で終わる。就業開始より前には始めない
+        // 到着移動: 直前現地から、または朝イチ事務所から。busy直後は作らない
+        const skipInbound = !anchorA.fromSite && Boolean(prevBusy);
         const travelInEnd = bookingStart;
         let travelInStart = new Date(travelInEnd.getTime() - inDuration * 60_000);
         const earliestLeave = anchorA.fromSite ? anchorA.at : workdayStart;
         if (travelInStart < earliestLeave) travelInStart = new Date(earliestLeave);
 
-        if (travelInEnd > travelInStart) {
+        if (!skipInbound && travelInEnd > travelInStart) {
           const id = await insertCalendarEvent(refresh, {
             summary: "移動（車）",
             location: "",
