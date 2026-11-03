@@ -54,6 +54,13 @@ export async function POST(req: Request) {
 
     const booking = await createBooking(body);
 
+    // 社内通知は after に載せない（Render で落ちると届かない）。SMTP は短いので本リクエストで送る
+    try {
+      await sendBookingNotifications(booking);
+    } catch (e) {
+      console.error("[api/bookings] mail notify failed", e);
+    }
+
     const response: BookingResponse = {
       id: booking.id,
       status: booking.status,
@@ -61,18 +68,13 @@ export async function POST(req: Request) {
       linkToken: booking.linkToken,
     };
 
-    // 完了画面がタイムアウトしないよう、先にレスポンス → カレンダー／メールは after
+    // カレンダー書き込みだけ after（完了画面を待たせない）
     after(async () => {
       try {
         const calendarEventIds = await pushBookingToCalendars(booking);
         await saveBookingCalendarEventIds(booking.id, calendarEventIds);
       } catch (e) {
         console.error("[api/bookings] calendar sync failed", e);
-      }
-      try {
-        await sendBookingNotifications(booking);
-      } catch (e) {
-        console.error("[api/bookings] mail notify failed", e);
       }
     });
 
