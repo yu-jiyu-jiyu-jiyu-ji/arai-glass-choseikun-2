@@ -71,6 +71,18 @@ export async function POST(req: Request) {
       settings.maxSearchDays,
     );
 
+    // カレンダー取得できた職人だけ使う（失敗＝全日空きの誤判定を防ぐ）
+    workers = workers.filter((w) => eventsByWorker.has(w.id));
+    if (workers.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "カレンダーを取得できる職人がいません。OAuth連携や権限を確認してください。",
+        },
+        { status: 400 },
+      );
+    }
+
     const eventsCountByWorker: Record<string, number> = {};
     for (const w of workers) {
       eventsCountByWorker[w.id] = eventsByWorker.get(w.id)?.length ?? 0;

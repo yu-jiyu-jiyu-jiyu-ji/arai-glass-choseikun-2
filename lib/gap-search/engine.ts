@@ -162,7 +162,9 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
       const scored: Scored[] = [];
 
       for (const worker of activeWorkers) {
-        const events = input.eventsByWorker.get(worker.id) ?? [];
+        // カレンダー未取得の職人は候補にしない（空＝全日空きの誤判定防止）
+        if (!input.eventsByWorker.has(worker.id)) continue;
+        const events = input.eventsByWorker.get(worker.id)!;
         // 現地ブロック全体が既存予定と被らないこと
         if (isBlocked(events, start, siteBlockEnd)) continue;
 

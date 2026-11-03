@@ -451,6 +451,7 @@ function ScheduleStep({
   const [workHours, setWorkHours] = useState<string[]>(HOURS);
   const [open, setOpen] = useState(false);
   const [firstDay, setFirstDay] = useState(0);
+  const [reloadToken, setReloadToken] = useState(0);
   const perPage = useDaysPerPage();
   const workerKey = workerIds?.join(",") ?? "";
 
@@ -494,7 +495,7 @@ function ScheduleStep({
     return () => {
       cancelled = true;
     };
-  }, [address, linkToken, workerKey, requireTwoWorkers]);
+  }, [address, linkToken, workerKey, requireTwoWorkers, reloadToken]);
 
   if (searching) {
     return (
@@ -545,10 +546,19 @@ function ScheduleStep({
 
       <div className="flex gap-3 rounded-xl bg-blue-50 p-4 text-sm leading-relaxed text-blue-900">
         <Route className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
-        <p>
-          <span className="font-bold">{address}</span> 周辺の訪問予定と移動時間（間検索）をもとに、
-          無理なくお伺いできる日程だけを表示しています。
-        </p>
+        <div className="min-w-0 flex-1">
+          <p>
+            <span className="font-bold">{address}</span> 周辺の訪問予定と移動時間（間検索）をもとに、
+            無理なくお伺いできる日程だけを表示しています。
+          </p>
+          <button
+            type="button"
+            onClick={() => setReloadToken((n) => n + 1)}
+            className="mt-2 text-sm font-bold underline underline-offset-2 hover:text-blue-700"
+          >
+            共通設定を変えたあと・表示がおかしいときは再検索
+          </button>
+        </div>
       </div>
 
       <section aria-labelledby="recommend-title">

@@ -48,8 +48,8 @@ export async function loadEventsByWorker(
     workers.map(async (w) => {
       const refresh = await getWorkerRefreshToken(w.id);
       if (!refresh) {
-        map.set(w.id, []);
-        console.warn(`[live] worker ${w.id} has no refresh_token — empty calendar`);
+        // map に載せない＝候補から除外（空配列にすると全日空きと誤判定する）
+        console.warn(`[live] worker ${w.id} has no refresh_token — exclude from slots`);
         return;
       }
       try {
@@ -62,8 +62,8 @@ export async function loadEventsByWorker(
         });
         map.set(w.id, events);
       } catch (e) {
-        console.error(`[live] calendar fetch failed for ${w.id}`, e);
-        map.set(w.id, []);
+        // 失敗時も空き扱いにしない（除外）
+        console.error(`[live] calendar fetch failed for ${w.id} — exclude from slots`, e);
       }
     }),
   );
