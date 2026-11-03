@@ -9,22 +9,11 @@ type RawEvent = {
   location?: string;
   status?: string;
   transparency?: string;
-  /** Google の特殊予定種別 */
-  eventType?: string;
   start?: { dateTime?: string; date?: string };
   end?: { dateTime?: string; date?: string };
   extendedProperties?: { private?: Record<string, string> };
   attendees?: { self?: boolean; responseStatus?: string }[];
 };
-
-/** Googleカレンダー「予約スケジュール／アポイント日程」の表示枠（実予定ではない） */
-function isAppointmentSchedulePlaceholder(title: string, eventType?: string): boolean {
-  if (/アポイント日程/.test(title)) return true;
-  if (/^Appointment schedule$/i.test(title)) return true;
-  // 将来の API 種別にも備える
-  if (eventType && /appointment/i.test(eventType)) return true;
-  return false;
-}
 
 export const CHOSEIKUN_TRAVEL_MARK = "※調整くん移動";
 export const CHOSEIKUN_SITE_MARK = "※調整くんからの自動登録";
@@ -111,9 +100,6 @@ export async function listCalendarEvents(opts: {
 
     // 調整くんでキャンセル印を付けた予定は空きとして再利用可
     if (title.startsWith("【キャンセル】")) continue;
-
-    // Googleの日程調整（アポイント日程）表示は実予定ではない → 空き扱い
-    if (isAppointmentSchedulePlaceholder(title, item.eventType)) continue;
 
     // 招待の自ステータスが「空き扱い」なら塞がない
     const selfAttendee = item.attendees?.find((a) => a.self);
@@ -268,7 +254,6 @@ export async function listManagedCalendarEvents(opts: {
     const location = item.location?.trim() ? item.location.trim() : null;
     const title = item.summary?.trim() || "(無題)";
     if (title.startsWith("【キャンセル】")) continue;
-    if (isAppointmentSchedulePlaceholder(title, item.eventType)) continue;
     const description = item.description ?? "";
     const priv = item.extendedProperties?.private ?? {};
     const choseikunManaged =
