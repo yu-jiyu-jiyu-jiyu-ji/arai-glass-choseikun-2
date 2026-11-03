@@ -21,6 +21,7 @@ export async function sendMail(opts: {
   subject: string;
   text: string;
   html?: string;
+  attachments?: { filename: string; content: Buffer; contentType?: string }[];
 }): Promise<void> {
   if (!smtpConfigured()) {
     throw new Error("SMTP が未設定です（SMTP_HOST / SMTP_USER / SMTP_PASSWORD）");
@@ -42,5 +43,6 @@ export async function sendMail(opts: {
     subject: opts.subject,
     text: opts.text,
     html: opts.html,
+    attachments: opts.attachments,
   });
 }

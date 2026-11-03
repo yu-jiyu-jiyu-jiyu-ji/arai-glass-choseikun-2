@@ -6,6 +6,8 @@ export type CalendarEventKind = "site" | "busy";
 
 export type LatLng = { lat: number; lng: number };
 
+export type AssignmentMode = "single" | "pair";
+
 export type Worker = {
   id: string;
   name: string;
@@ -19,6 +21,8 @@ export type Worker = {
   rank: string;
   calendarId: string;
   active: boolean;
+  /** 予約成立時に社内通知メールを送るか */
+  notifyOnBooking?: boolean;
 };
 
 export type CalendarEvent = {
@@ -54,6 +58,8 @@ export type SearchSlotsRequest = {
   /** 発行リンクの候補職人。未指定なら全社 */
   workerIds?: string[];
   linkToken?: string;
+  /** 社内画面からの必要人数上書き */
+  requireTwoWorkers?: boolean;
 };
 
 export type SearchSlotsResponse = {
@@ -81,6 +87,7 @@ export type Booking = {
   phone: string;
   name: string;
   email: string;
+  note?: string;
   start: string;
   end: string;
   /** 確定時に選出した担当（基本2人） */
@@ -98,7 +105,15 @@ export type BookingLink = {
   token: string;
   /** 間検索の候補プール（複数・全員可） */
   workerIds: string[];
+  /** single=誰か1名 / pair=2名同時 */
+  assignmentMode: AssignmentMode;
   note: string;
+  customerPreset?: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+  };
   createdAt: string;
   active: boolean;
 };
@@ -108,7 +123,8 @@ export type BookingRequest = {
   parking: Parking;
   phone: string;
   name: string;
-  email: string;
+  email?: string;
+  note?: string;
   start: string;
   end: string;
   workerIds?: string[];

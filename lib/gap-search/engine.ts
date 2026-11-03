@@ -84,6 +84,8 @@ export type GapSearchInput = {
   eventsByWorker: Map<string, CalendarEvent[]>;
   fromDate: Date;
   settings: AppSettings;
+  /** リンク発行時の必要人数。未指定なら settings.requireTwoWorkers */
+  requireTwoWorkers?: boolean;
   /** 本番 Maps。未指定時はハバーサイン概算 */
   driveFetcher?: (from: LatLng, to: LatLng) => Promise<number>;
 };
@@ -149,9 +151,16 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
         const viaCustomer = travelIn + travelOut;
         const deltaT = b ? Math.max(0, viaCustomer - direct) : 0;
 
-        if (deltaT >= settings.detourThresholdMinutes) continue;
+        const travelBuffer = settings.travelBufferMinutes ?? 0;
+        if (deltaT + travelBuffer >= settings.detourThresholdMinutes) continue;
 
-        const needed = travelIn + settings.surveyMinutes + travelOut + settings.bufferMinutes;
+        const needed =
+          travelIn +
+          travelBuffer +
+          settings.surveyMinutes +
+          travelOut +
+          travelBuffer +
+          settings.bufferMinutes;
         const windowEnd = b
           ? b.at
           : jstWallOnSameDay(start, settings.workdayEndHour, 0);
@@ -171,7 +180,9 @@ export async function runGapSearch(input: GapSearchInput): Promise<{
 
       scored.sort((x, y) => x.score - y.score);
 
-      if (settings.requireTwoWorkers) {
+      const needTwo =
+        input.requireTwoWorkers ?? settings.requireTwoWorkers;
+      if (needTwo) {
         if (scored.length < 2) continue;
         const [first, second] = scored;
         candidates.push({

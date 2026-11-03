@@ -55,6 +55,12 @@ export type BookingFlowProps = {
   showAdminLink?: boolean;
   /** staff: 社内代理入力表示 */
   mode?: "customer" | "staff";
+  /** 社内: メール任意 */
+  emailOptional?: boolean;
+  /** 社内電話: 住所だけ先に入れて枠検索 → その後顧客情報 */
+  addressFirst?: boolean;
+  /** 社内: 1名/ペア上書き */
+  requireTwoWorkers?: boolean;
   /** 完了後「続けて別件」など（社内用） */
   onRestart?: () => void;
 };
@@ -164,12 +170,26 @@ function StepIndicator({ step }: { step: Step }) {
   );
 }
 
-function FieldLabel({ icon: Icon, children, htmlFor }: { icon: typeof MapPin; children: ReactNode; htmlFor?: string }) {
+function FieldLabel({
+  icon: Icon,
+  children,
+  htmlFor,
+  required = true,
+}: {
+  icon: typeof MapPin;
+  children: ReactNode;
+  htmlFor?: string;
+  required?: boolean;
+}) {
   return (
     <label htmlFor={htmlFor} className="mb-2 flex items-center gap-2 text-base font-bold text-slate-800">
       <Icon className="h-5 w-5 text-blue-900" aria-hidden />
       {children}
-      <span className="rounded bg-orange-500 px-1.5 py-0.5 text-xs font-bold text-white">必須</span>
+      {required ? (
+        <span className="rounded bg-orange-500 px-1.5 py-0.5 text-xs font-bold text-white">必須</span>
+      ) : (
+        <span className="rounded bg-slate-400 px-1.5 py-0.5 text-xs font-bold text-white">任意</span>
+      )}
     </label>
   );
 }
@@ -189,10 +209,18 @@ function InputStep({
   values,
   onChange,
   onSubmit,
+  emailOptional = false,
+  addressOnly = false,
+  skipAddress = false,
 }: {
   values: FormValues;
   onChange: (v: FormValues) => void;
   onSubmit: () => void;
+  emailOptional?: boolean;
+  /** 住所だけ（社内・枠検索前） */
+  addressOnly?: boolean;
+  /** 住所以外（社内・枠選択後） */
+  skipAddress?: boolean;
 }) {
   const [errors, setErrors] = useState<Partial<Record<keyof FormValues, string>>>({});
 
@@ -204,19 +232,27 @@ function InputStep({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const next: typeof errors = {};
-    const address = values.address.replace(/\s/g, "");
-    if (!values.address.trim()) next.address = "ご住所を入力してください";
-    else if (!/\d|[０-９]/.test(address) || address.length < 8) {
-      next.address = "丁目・番地・号までご入力ください（例: 東京都台東区寿3-9-6）";
+    if (!skipAddress) {
+      const address = values.address.replace(/\s/g, "");
+      if (!values.address.trim()) next.address = "ご住所を入力してください";
+      else if (!/\d|[０-９]/.test(address) || address.length < 8) {
+        next.address = "丁目・番地・号までご入力ください（例: 東京都台東区寿3-9-6）";
+      }
     }
-    if (!values.parking) next.parking = "駐車場のご案内を1つお選びください";
-    const digits = values.phone.replace(/[^0-9０-９]/g, "");
-    if (!values.phone.trim()) next.phone = "お電話番号を入力してください";
-    else if (digits.length < 10 || digits.length > 11) next.phone = "お電話番号は10〜11桁の数字でご入力ください";
-    if (!values.name.trim()) next.name = "お名前を入力してください";
-    if (!values.email.trim()) next.email = "メールアドレスを入力してください";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) {
-      next.email = "メールアドレスの形式をご確認ください";
+    if (!addressOnly) {
+      if (!values.parking) next.parking = "駐車場のご案内を1つお選びください";
+      const digits = values.phone.replace(/[^0-9０-９]/g, "");
+      if (!values.phone.trim()) next.phone = "お電話番号を入力してください";
+      else if (digits.length < 10 || digits.length > 11) next.phone = "お電話番号は10〜11桁の数字でご入力ください";
+      if (!values.name.trim()) next.name = "お名前を入力してください";
+      if (!emailOptional) {
+        if (!values.email.trim()) next.email = "メールアドレスを入力してください";
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) {
+          next.email = "メールアドレスの形式をご確認ください";
+        }
+      } else if (values.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) {
+        next.email = "メールアドレスの形式をご確認ください";
+      }
     }
     setErrors(next);
     if (Object.keys(next).length === 0) onSubmit();
@@ -230,11 +266,14 @@ function InputStep({
   return (
     <form onSubmit={submit} noValidate className="space-y-7">
       <p className="text-base leading-relaxed text-slate-700">
-        ご住所を入力いただくと、当日の訪問ルートを考慮して
-        <strong className="text-blue-900">いちばん早くお伺いできる日程</strong>
-        をご案内します。
+        {addressOnly
+          ? "まずご住所を入力し、空き枠を検索します。"
+          : skipAddress
+            ? "お客様情報を入力して予約を確定します。"
+            : "ご住所を入力いただくと、当日の訪問ルートを考慮していちばん早くお伺いできる日程をご案内します。"}
       </p>
 
+      {!skipAddress && (
       <div>
         <FieldLabel icon={MapPin} htmlFor="address">
           ご住所
@@ -252,7 +291,10 @@ function InputStep({
         <p className="mt-1 text-sm text-slate-500">市区町村だけでなく、丁目・番地・号までご入力ください。</p>
         <ErrorText message={errors.address} />
       </div>
+      )}
 
+      {!addressOnly && (
+      <>
       <fieldset>
         <legend className="mb-2 flex items-center gap-2 text-base font-bold text-slate-800">
           <Car className="h-5 w-5 text-blue-900" aria-hidden />
@@ -324,8 +366,8 @@ function InputStep({
       </div>
 
       <div>
-        <FieldLabel icon={Mail} htmlFor="email">
-          メールアドレス
+        <FieldLabel icon={Mail} htmlFor="email" required={!emailOptional}>
+          メールアドレス{emailOptional ? "（任意）" : ""}
         </FieldLabel>
         <input
           id="email"
@@ -337,16 +379,22 @@ function InputStep({
           className={inputClass(errors.email)}
           aria-invalid={!!errors.email}
         />
-        <p className="mt-1 text-sm text-slate-500">ご予約確認・リマインド・見積のご連絡に使用します。</p>
+        <p className="mt-1 text-sm text-slate-500">
+          {emailOptional
+            ? "任意です。入力があれば確認メール・リマインドに使用します。"
+            : "ご予約確認・リマインド・見積のご連絡に使用します。"}
+        </p>
         <ErrorText message={errors.email} />
       </div>
+      </>
+      )}
 
       <button
         type="submit"
         className="flex min-h-16 w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 px-6 text-xl font-bold text-white shadow-lg shadow-orange-500/30 transition hover:bg-orange-600 focus:outline-none focus:ring-4 focus:ring-orange-300 active:scale-[0.99]"
       >
         <Sparkles className="h-6 w-6" aria-hidden />
-        最適な空き日程を探す
+        {addressOnly ? "空き日程を探す" : skipAddress ? "内容を確認して予約する" : "最適な空き日程を探す"}
       </button>
     </form>
   );
@@ -358,12 +406,14 @@ function ScheduleStep({
   address,
   linkToken,
   workerIds,
+  requireTwoWorkers,
   onSelect,
   onBack,
 }: {
   address: string;
   linkToken?: string;
   workerIds?: string[];
+  requireTwoWorkers?: boolean;
   onSelect: (slot: Slot) => void;
   onBack: () => void;
 }) {
@@ -390,6 +440,7 @@ function ScheduleStep({
             address,
             linkToken,
             workerIds: workerIds?.length ? workerIds : undefined,
+            requireTwoWorkers,
           }),
         });
         const data = await res.json();
@@ -412,7 +463,7 @@ function ScheduleStep({
     return () => {
       cancelled = true;
     };
-  }, [address, linkToken, workerKey]);
+  }, [address, linkToken, workerKey, requireTwoWorkers]);
 
   if (searching) {
     return (
@@ -785,6 +836,9 @@ export function BookingFlow({
   workerIds,
   showAdminLink = false,
   mode = "customer",
+  emailOptional = false,
+  addressFirst = false,
+  requireTwoWorkers,
   onRestart,
 }: BookingFlowProps) {
   const [step, setStep] = useState<Step>(1);
@@ -800,6 +854,7 @@ export function BookingFlow({
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const isStaff = mode === "staff";
+  const staffPhone = isStaff && addressFirst;
 
   const go = (next: Step) => {
     setStep(next);
@@ -859,21 +914,45 @@ export function BookingFlow({
       </header>
 
       <main className="mx-auto max-w-xl px-4 py-8">
-        {step === 1 && <InputStep values={values} onChange={setValues} onSubmit={() => go(2)} />}
+        {step === 1 && (
+          <InputStep
+            values={values}
+            onChange={setValues}
+            onSubmit={() => go(2)}
+            emailOptional={emailOptional}
+            addressOnly={staffPhone}
+          />
+        )}
 
         {step === 2 && (
           <ScheduleStep
             address={values.address}
             linkToken={linkToken}
             workerIds={workerIds}
-            onSelect={setPending}
+            requireTwoWorkers={requireTwoWorkers}
+            onSelect={(slot) => {
+              setPending(slot);
+              if (staffPhone) go(3);
+            }}
             onBack={() => go(1)}
           />
         )}
 
-        {step === 3 && booked && <DoneStep slot={booked} values={values} />}
+        {/* 社内電話: 枠選択後に顧客情報 → 確定 */}
+        {staffPhone && step === 3 && pending && !booked && (
+          <InputStep
+            values={values}
+            onChange={setValues}
+            emailOptional={emailOptional}
+            skipAddress
+            onSubmit={() => void confirmBooking()}
+          />
+        )}
 
-        {isStaff && step === 3 && (
+        {step === 3 && booked && <DoneStep slot={booked} values={values} />}
+        {!staffPhone && step === 3 && booked && null}
+
+        {isStaff && step === 3 && booked && (
           <p className="mt-6 text-center text-sm">
             <a href="/admin/bookings" className="font-bold text-blue-900 underline-offset-2 hover:underline">
               予約一覧を見る
@@ -905,7 +984,7 @@ export function BookingFlow({
         )}
       </footer>
 
-      {pending && (
+      {pending && !staffPhone && (
         <ConfirmDialog
           slot={pending}
           values={values}

@@ -5,6 +5,7 @@ import {
   deleteCalendarEvent,
   insertCalendarEvent,
   listManagedCalendarEvents,
+  patchCalendarEvent,
   type ManagedCalendarEvent,
 } from "../google/calendar";
 import { fetchDriveMinutes, geocodeAddress, mapsConfigured } from "../google/maps";
@@ -163,6 +164,12 @@ export async function pushBookingToCalendars(
           created.push(id);
         }
 
+        const navUrl =
+          `https://www.google.com/maps/dir/?api=1` +
+          `&origin=${encodeURIComponent(anchorA.label)}` +
+          `&destination=${encodeURIComponent(booking.address)}` +
+          `&travelmode=driving`;
+
         // 現地調査
         const siteId = await insertCalendarEvent(refresh, {
           summary: `現地調査 ${booking.name}様`,
@@ -170,10 +177,13 @@ export async function pushBookingToCalendars(
           description: [
             `お客様: ${booking.name}`,
             `電話: ${booking.phone}`,
-            `メール: ${booking.email}`,
+            `メール: ${booking.email || "（未登録）"}`,
             `住所: ${booking.address}`,
             `駐車場: ${PARKING_LABEL[booking.parking] ?? booking.parking}`,
             `予約ID: ${booking.id}`,
+            "",
+            "【ナビ（車）】",
+            navUrl,
             "",
             CHOSEIKUN_SITE_MARK,
           ].join("\n"),
@@ -243,7 +253,11 @@ async function driveMinutesSafe(from: LatLng, to: LatLng): Promise<number> {
   }
 }
 
-/** キャンセル時に登録済みイベント（現地＋移動）を削除 */
+/**
+ * キャンセル時のカレンダー清掃:
+ * - 現地予定: タイトル先頭に【キャンセル】を付与（空き枠として再利用可）
+ * - 移動予定: 削除
+ */
 export async function removeBookingFromCalendars(booking: Booking): Promise<void> {
   if (APP_CONFIG.useMockProviders || !oauthConfigured()) return;
   const map = booking.calendarEventIds ?? {};
@@ -252,14 +266,54 @@ export async function removeBookingFromCalendars(booking: Booking): Promise<void
       const eventIds = normalizeEventIds(raw);
       const refresh = await getWorkerRefreshToken(workerId);
       if (!refresh) {
-        console.warn(`[calendar-sync] no refresh_token for ${workerId}, skip delete`);
+        console.warn(`[calendar-sync] no refresh_token for ${workerId}, skip cancel clean`);
         return;
       }
+
+      // 当日の管理イベントを見て、site / travel を判別
+      const dayStart = startOfJstDay(new Date(booking.start));
+      const dayEnd = addJstDays(dayStart, 1);
+      let managed: ManagedCalendarEvent[] = [];
+      try {
+        managed = await listManagedCalendarEvents({
+          refreshToken: refresh,
+          timeMin: dayStart,
+          timeMax: dayEnd,
+        });
+      } catch (e) {
+        console.warn(`[calendar-sync] list for cancel failed ${workerId}`, e);
+      }
+
       for (const eventId of eventIds) {
+        const hit = managed.find((m) => m.id === eventId);
+        const isTravel =
+          hit?.choseikunKind === "travel" ||
+          hit?.summary?.includes("移動") ||
+          (!hit && false);
         try {
-          await deleteCalendarEvent(refresh, eventId);
+          if (isTravel || hit?.choseikunKind === "travel") {
+            await deleteCalendarEvent(refresh, eventId);
+          } else {
+            const title = hit?.summary || `現地調査 ${booking.name}様`;
+            const nextTitle = title.startsWith("【キャンセル】")
+              ? title
+              : `【キャンセル】${title}`;
+            await patchCalendarEvent(refresh, eventId, { summary: nextTitle });
+          }
         } catch (e) {
-          console.error(`[calendar-sync] delete failed for ${workerId}/${eventId}`, e);
+          console.error(`[calendar-sync] cancel clean failed ${workerId}/${eventId}`, e);
+        }
+      }
+
+      // 付随移動で ID 未保存のものも、同予約IDの移動を掃除
+      for (const ev of managed) {
+        if (ev.choseikunKind !== "travel") continue;
+        if (!ev.description.includes(booking.id)) continue;
+        if (eventIds.includes(ev.id)) continue;
+        try {
+          await deleteCalendarEvent(refresh, ev.id);
+        } catch (e) {
+          console.warn(`[calendar-sync] orphan travel delete ${ev.id}`, e);
         }
       }
     }),

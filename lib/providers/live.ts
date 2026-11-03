@@ -1,5 +1,6 @@
 import { APP_CONFIG } from "../config";
 import { getDriveMinutes, TravelTimeCache } from "../gap-search/travel";
+import { loadSettings } from "../settings";
 import { addJstDays, startOfJstDay } from "../time/jst";
 import type { CalendarEvent, LatLng, Worker } from "../types";
 import { fetchWorkerEvents } from "../google/calendar";
@@ -39,6 +40,9 @@ export async function loadEventsByWorker(
   const timeMin = startOfJstDay(fromDate);
   const timeMax = addJstDays(timeMin, maxSearchDays + 2);
 
+  const settings = await loadSettings();
+  const inviteStatusesAsFree = settings.inviteStatusesAsFree ?? ["declined"];
+
   const map = new Map<string, CalendarEvent[]>();
   await Promise.all(
     workers.map(async (w) => {
@@ -54,6 +58,7 @@ export async function loadEventsByWorker(
           refreshToken: refresh,
           timeMin,
           timeMax,
+          inviteStatusesAsFree,
         });
         map.set(w.id, events);
       } catch (e) {

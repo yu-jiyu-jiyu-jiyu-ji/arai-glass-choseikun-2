@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { APP_CONFIG } from "@/lib/config";
+import { sendBookingNotifications } from "@/lib/mail/booking-notify";
 import { pushBookingToCalendars } from "@/lib/providers/calendar-sync";
 import { createBooking, loadBookings, saveBookingCalendarEventIds } from "@/lib/store";
 import type { BookingRequest, BookingResponse } from "@/lib/types";
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as BookingRequest;
 
-    const required = ["address", "parking", "phone", "name", "email", "start", "end"] as const;
+    const required = ["address", "parking", "phone", "name", "start", "end"] as const;
     for (const key of required) {
       if (!body[key]) {
         return NextResponse.json({ error: `${key} は必須です` }, { status: 400 });
@@ -59,6 +60,12 @@ export async function POST(req: Request) {
       await saveBookingCalendarEventIds(booking.id, calendarEventIds);
     } catch (e) {
       console.error("[api/bookings] calendar sync failed", e);
+    }
+
+    try {
+      await sendBookingNotifications(booking);
+    } catch (e) {
+      console.error("[api/bookings] mail notify failed", e);
     }
 
     const response: BookingResponse = {

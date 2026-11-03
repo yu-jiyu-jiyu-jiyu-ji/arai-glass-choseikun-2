@@ -104,6 +104,7 @@ export async function upsertWorker(
     rank: input.rank ?? "",
     calendarId: input.calendarId ?? `cal-${Date.now()}`,
     active: input.active ?? true,
+    notifyOnBooking: input.notifyOnBooking ?? true,
   };
   workers.push(worker);
   await writeJson(WORKERS_PATH, workers);
@@ -113,7 +114,11 @@ export async function upsertWorker(
 
 async function loadBookingLinksUncached(): Promise<BookingLink[]> {
   if (useFirestore()) return fsStore.fsLoadBookingLinks();
-  return readJson<BookingLink[]>(LINKS_PATH, []);
+  const raw = await readJson<BookingLink[]>(LINKS_PATH, []);
+  return raw.map((l) => ({
+    ...l,
+    assignmentMode: l.assignmentMode === "single" ? "single" : "pair",
+  }));
 }
 
 export async function loadBookingLinks(): Promise<BookingLink[]> {
@@ -123,6 +128,8 @@ export async function loadBookingLinks(): Promise<BookingLink[]> {
 export async function createBookingLink(input: {
   workerIds: string[];
   note?: string;
+  assignmentMode?: "single" | "pair";
+  customerPreset?: BookingLink["customerPreset"];
 }): Promise<BookingLink> {
   if (useFirestore()) {
     const link = await fsStore.fsCreateBookingLink(input);
@@ -143,7 +150,9 @@ export async function createBookingLink(input: {
     id: newId("lnk"),
     token: newToken(),
     workerIds,
+    assignmentMode: input.assignmentMode === "single" ? "single" : "pair",
     note: input.note?.trim() ?? "",
+    customerPreset: input.customerPreset,
     createdAt: new Date().toISOString(),
     active: true,
   };
@@ -218,7 +227,8 @@ export async function createBooking(req: BookingRequest): Promise<Booking> {
     parking: req.parking,
     phone: req.phone.trim(),
     name: req.name.trim(),
-    email: req.email.trim(),
+    email: (req.email ?? "").trim(),
+    note: req.note?.trim() ?? "",
     start: req.start,
     end: req.end,
     workerIds,

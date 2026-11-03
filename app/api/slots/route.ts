@@ -29,12 +29,17 @@ export async function POST(req: Request) {
     }
 
     let poolIds = body.workerIds;
+    let requireTwoWorkers: boolean | undefined =
+      typeof body.requireTwoWorkers === "boolean" ? body.requireTwoWorkers : undefined;
     if (body.linkToken) {
       const link = await getBookingLinkByToken(body.linkToken);
       if (!link) {
         return NextResponse.json({ error: "ご案内URLが無効です" }, { status: 404 });
       }
       poolIds = link.workerIds;
+      if (requireTwoWorkers === undefined) {
+        requireTwoWorkers = (link.assignmentMode ?? "pair") === "pair";
+      }
     }
 
     let workers = (
@@ -77,6 +82,7 @@ export async function POST(req: Request) {
       eventsByWorker,
       fromDate: new Date(),
       settings,
+      requireTwoWorkers,
       driveFetcher: createDriveFetcher(),
     });
 

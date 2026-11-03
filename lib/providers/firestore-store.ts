@@ -44,6 +44,7 @@ export function mapWorkerDoc(id: string, data: Record<string, unknown>): Worker 
     rank: String(data.rank ?? "").trim(),
     calendarId: calendarId || "primary",
     active: data.is_active !== false && data.active !== false,
+    notifyOnBooking: data.notifyOnBooking !== false,
   };
 }
 
@@ -76,6 +77,7 @@ export async function fsUpsertWorker(
       survey_main: input.surveyMain ?? prev.survey_main ?? false,
       rank: input.rank ?? prev.rank ?? "",
       role: input.surveyMain ? "調査メイン" : (prev.role ?? ""),
+      notifyOnBooking: input.notifyOnBooking ?? prev.notifyOnBooking ?? true,
     };
     // oauthLinked はトークン有無で見る。手入力 true だけではトークンは作らない
     await ref.set(patch, { merge: true });
@@ -93,6 +95,7 @@ export async function fsUpsertWorker(
     survey_main: input.surveyMain ?? false,
     role: input.surveyMain ? "調査メイン" : "",
     rank: input.rank ?? "",
+    notifyOnBooking: input.notifyOnBooking ?? true,
     note: "choseikun",
     display_order: listed.length + 1,
     fixed_days_off: [] as number[],
@@ -110,7 +113,9 @@ export async function fsLoadBookingLinks(): Promise<BookingLink[]> {
       id: String(x.id ?? d.id),
       token: String(x.token),
       workerIds: (x.workerIds as string[]) ?? [],
+      assignmentMode: x.assignmentMode === "single" ? "single" : "pair",
       note: String(x.note ?? ""),
+      customerPreset: x.customerPreset as BookingLink["customerPreset"],
       createdAt: String(x.createdAt ?? ""),
       active: x.active !== false,
     } satisfies BookingLink;
@@ -122,6 +127,8 @@ export async function fsLoadBookingLinks(): Promise<BookingLink[]> {
 export async function fsCreateBookingLink(input: {
   workerIds: string[];
   note?: string;
+  assignmentMode?: "single" | "pair";
+  customerPreset?: BookingLink["customerPreset"];
 }): Promise<BookingLink> {
   const workers = await fsLoadWorkers();
   const activeIds = new Set(workers.filter((w) => w.active).map((w) => w.id));
@@ -133,7 +140,9 @@ export async function fsCreateBookingLink(input: {
     id: newId("lnk"),
     token: newToken(),
     workerIds,
+    assignmentMode: input.assignmentMode === "single" ? "single" : "pair",
     note: input.note?.trim() ?? "",
+    customerPreset: input.customerPreset,
     createdAt: new Date().toISOString(),
     active: true,
   };
@@ -159,7 +168,9 @@ export async function fsGetBookingLinkByToken(token: string): Promise<BookingLin
     id: String(hit.id),
     token: String(hit.token),
     workerIds: (hit.workerIds as string[]) ?? [],
+    assignmentMode: hit.assignmentMode === "single" ? "single" : "pair",
     note: String(hit.note ?? ""),
+    customerPreset: hit.customerPreset as BookingLink["customerPreset"],
     createdAt: String(hit.createdAt),
     active: true,
   };
@@ -238,7 +249,8 @@ export async function fsCreateBooking(req: BookingRequest): Promise<Booking> {
     parking: req.parking,
     phone: req.phone.trim(),
     name: req.name.trim(),
-    email: req.email.trim(),
+    email: (req.email ?? "").trim(),
+    note: req.note?.trim() ?? "",
     start: req.start,
     end: req.end,
     workerIds,

@@ -12,6 +12,7 @@ type RawEvent = {
   start?: { dateTime?: string; date?: string };
   end?: { dateTime?: string; date?: string };
   extendedProperties?: { private?: Record<string, string> };
+  attendees?: { self?: boolean; responseStatus?: string }[];
 };
 
 export const CHOSEIKUN_TRAVEL_MARK = "※調整くん移動";
@@ -65,6 +66,8 @@ export async function listCalendarEvents(opts: {
   timeMin: Date;
   timeMax: Date;
   workerId: string;
+  /** 空き扱いする招待ステータス（例: declined） */
+  inviteStatusesAsFree?: string[];
 }): Promise<CalendarEvent[]> {
   const calId = encodeURIComponent(opts.calendarId || "primary");
   const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${calId}/events`);
@@ -82,6 +85,7 @@ export async function listCalendarEvents(opts: {
     throw new Error(data.error?.message || `Calendar API ${res.status}`);
   }
 
+  const freeInvite = new Set(opts.inviteStatusesAsFree ?? ["declined"]);
   const out: CalendarEvent[] = [];
   for (const item of data.items ?? []) {
     // キャンセル・「予定なし」(transparent) は塞がない
@@ -93,6 +97,16 @@ export async function listCalendarEvents(opts: {
     if (!start || !end || !(end > start)) continue;
     const location = item.location?.trim() ? item.location.trim() : null;
     const title = item.summary?.trim() || "(無題)";
+
+    // 調整くんでキャンセル印を付けた予定は空きとして再利用可
+    if (title.startsWith("【キャンセル】")) continue;
+
+    // 招待の自ステータスが「空き扱い」なら塞がない
+    const selfAttendee = item.attendees?.find((a) => a.self);
+    if (selfAttendee?.responseStatus && freeInvite.has(selfAttendee.responseStatus)) {
+      continue;
+    }
+
     // 住所なし・移動・ブロックも busy。現地（住所あり）は site
     const kind = classifyEvent(title, location);
     let latLng: LatLng | null = null;
@@ -133,6 +147,7 @@ export async function fetchWorkerEvents(opts: {
   refreshToken: string;
   timeMin: Date;
   timeMax: Date;
+  inviteStatusesAsFree?: string[];
 }): Promise<CalendarEvent[]> {
   const { accessToken } = await refreshAccessToken(opts.refreshToken);
   // OAuth したアカウントの主カレンダーを使う（台帳の calendarId/email だと別暦を読んで空き誤判定しやすい）
@@ -143,6 +158,7 @@ export async function fetchWorkerEvents(opts: {
     timeMin: opts.timeMin,
     timeMax: opts.timeMax,
     workerId: opts.worker.id,
+    inviteStatusesAsFree: opts.inviteStatusesAsFree,
   });
 }
 
@@ -261,6 +277,28 @@ export async function listManagedCalendarEvents(opts: {
     });
   }
   return out;
+}
+
+/** 既存イベントのタイトル等を部分更新 */
+export async function patchCalendarEvent(
+  refreshToken: string,
+  eventId: string,
+  patch: { summary?: string; description?: string },
+): Promise<void> {
+  const { accessToken } = await refreshAccessToken(refreshToken);
+  const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text();
+    throw new Error(`Calendar patch ${res.status}: ${text.slice(0, 200)}`);
+  }
 }
 
 export async function deleteCalendarEvent(

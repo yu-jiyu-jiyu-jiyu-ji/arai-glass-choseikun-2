@@ -13,10 +13,22 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as { workerIds?: string[]; note?: string };
+    const body = (await req.json()) as {
+      workerIds?: string[];
+      note?: string;
+      assignmentMode?: "single" | "pair";
+      customerPreset?: {
+        name?: string;
+        phone?: string;
+        email?: string;
+        address?: string;
+      };
+    };
     const link = await createBookingLink({
       workerIds: Array.isArray(body.workerIds) ? body.workerIds : [],
       note: body.note,
+      assignmentMode: body.assignmentMode,
+      customerPreset: body.customerPreset,
     });
     return NextResponse.json({ link }, { status: 201 });
   } catch (e) {

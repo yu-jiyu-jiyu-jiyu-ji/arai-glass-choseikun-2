@@ -35,6 +35,13 @@
 - JSON・秘密鍵は **Secret** として登録（ログに出さない）
 - 既存 nittei（Streamlit）用のリダイレクト URI と **choseikun 用は別**。両方 OAuth クライアントに登録してよい
 
+## 外部Bot用URL発行
+
+| 変数名 | 入れるもの |
+|--------|------------|
+| `TOKENS_ISSUE_API_KEY` | `POST /api/tokens/issue` の Bearer / x-api-key |
+| `NEXT_PUBLIC_APP_ORIGIN` | 公開ORIGIN（例: `https://….onrender.com`） |
+
 ## メールリマインド（SMTP + Cron）
 
 日程調整ツールと同じ SMTP 変数を Render に入れる。

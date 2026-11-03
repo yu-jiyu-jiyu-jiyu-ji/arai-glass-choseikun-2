@@ -12,6 +12,7 @@ const emptyForm = {
   surveyMain: false,
   oauthLinked: false,
   active: true,
+  notifyOnBooking: true,
 };
 
 export default function WorkersPage() {
@@ -55,6 +56,7 @@ export default function WorkersPage() {
       surveyMain: w.surveyMain,
       oauthLinked: w.oauthLinked,
       active: w.active,
+      notifyOnBooking: w.notifyOnBooking !== false,
     });
     setMessage(null);
     setError(null);
@@ -161,6 +163,14 @@ export default function WorkersPage() {
               onChange={(e) => setForm({ ...form, active: e.target.checked })}
             />
             有効
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.notifyOnBooking}
+              onChange={(e) => setForm({ ...form, notifyOnBooking: e.target.checked })}
+            />
+            予約成立時にメール通知
           </label>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">

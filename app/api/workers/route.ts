@@ -25,6 +25,8 @@ export async function POST(req: Request) {
       surveyMain: body.surveyMain,
       active: body.active,
       calendarId: body.calendarId,
+      rank: body.rank,
+      notifyOnBooking: body.notifyOnBooking,
     });
     return NextResponse.json({ worker }, { status: 201 });
   } catch (e) {
@@ -50,6 +52,8 @@ export async function PUT(req: Request) {
       surveyMain: body.surveyMain,
       active: body.active,
       calendarId: body.calendarId,
+      rank: body.rank,
+      notifyOnBooking: body.notifyOnBooking,
     });
     return NextResponse.json({ worker });
   } catch (e) {

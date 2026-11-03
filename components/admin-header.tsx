@@ -7,10 +7,11 @@ import { ArrowLeft, Menu, X } from "lucide-react";
 
 const NAV = [
   { href: "/admin", label: "ホーム", exact: true },
+  { href: "/internal/booking", label: "電話受付" },
+  { href: "/internal/links", label: "URL発行" },
   { href: "/admin/book", label: "予約調整" },
   { href: "/admin/workers", label: "職人" },
   { href: "/admin/bookings", label: "予約一覧" },
-  { href: "/admin/links", label: "URL発行" },
   { href: "/admin/settings", label: "共通設定" },
 ];
 

@@ -2,6 +2,11 @@ export type WorkdayKey = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
 
 export type LatLng = { lat: number; lng: number };
 
+/** 招待の出欠のうち、空き枠として扱うもの */
+export type InviteFreeStatus = "declined" | "needsAction" | "tentative";
+
+export type ImageSendMode = "inline" | "attachment";
+
 export type AppSettings = {
   officeAddress: string;
   officePostalCode: string;
@@ -14,8 +19,12 @@ export type AppSettings = {
   workdayEndHour: number;
   lunchStartHour: number;
   lunchEndHour: number;
+  /** 現地調査時間（分） */
   surveyMinutes: number;
+  /** 調査後バッファ（分） */
   bufferMinutes: number;
+  /** 移動バッファ（分）。移動判定・カレンダー移動枠に加味 */
+  travelBufferMinutes: number;
   slotIntervalMinutes: number;
   detourThresholdMinutes: number;
   initialSearchDays: number;
@@ -35,6 +44,19 @@ export type AppSettings = {
   reminderHour: number;
   /** 何日前に送るか（例: 7と1 = 1週間前と1日前） */
   reminderDaysBefore: number[];
+  /**
+   * 空き枠としてカウントする招待ステータス。
+   * 既定は declined のみ（重複防止）。
+   */
+  inviteStatusesAsFree: InviteFreeStatus[];
+  /** 予約完了メールの案内文（プレーンテキスト可） */
+  customerMailBody: string;
+  /** 案内画像（data URL または公開URL）。未設定時は空 */
+  guideImageDataUrl: string;
+  /** 案内画像のファイル名 */
+  guideImageFileName: string;
+  /** 画像の送信形式 */
+  guideImageSendMode: ImageSendMode;
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -57,6 +79,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lunchEndHour: 13,
   surveyMinutes: 45,
   bufferMinutes: 15,
+  travelBufferMinutes: 20,
   slotIntervalMinutes: 60,
   detourThresholdMinutes: 20,
   initialSearchDays: 7,
@@ -70,6 +93,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
   reminderEnabled: true,
   reminderHour: 18,
   reminderDaysBefore: [7, 1],
+  inviteStatusesAsFree: ["declined"],
+  customerMailBody: [
+    "この度はご予約ありがとうございました。",
+    "",
+    "当日は現地にて調査を行い、必要なご案内をいたします。",
+    "ご不明点がございましたら、本メールへご返信ください。",
+    "",
+    "荒井硝子",
+  ].join("\n"),
+  guideImageDataUrl: "",
+  guideImageFileName: "",
+  guideImageSendMode: "inline",
 };
 
 export const WORKDAY_LABELS: { key: WorkdayKey; label: string }[] = [
@@ -82,9 +117,26 @@ export const WORKDAY_LABELS: { key: WorkdayKey; label: string }[] = [
   { key: "sun", label: "日" },
 ];
 
+export const INVITE_STATUS_OPTIONS: {
+  value: InviteFreeStatus;
+  label: string;
+  warn?: boolean;
+}[] = [
+  { value: "declined", label: "辞退 (declined)" },
+  {
+    value: "needsAction",
+    label: "未回答 (needsAction)",
+    warn: true,
+  },
+  {
+    value: "tentative",
+    label: "仮承諾 (tentative)",
+    warn: true,
+  },
+];
+
 export function workdayKeyFromDate(d: Date): WorkdayKey {
   const map: WorkdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
-  // JST 曜日（Render UTC でも日本の定休と一致させる）
   const weekday = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Tokyo",
     weekday: "short",
@@ -105,4 +157,18 @@ export function officeFullAddress(s: AppSettings): string {
   const zip = s.officePostalCode ? `〒${s.officePostalCode} ` : "";
   const bld = s.officeBuilding ? ` ${s.officeBuilding}` : "";
   return `${zip}${s.officeAddress}${bld}`.trim();
+}
+
+/** 部分上書きを DEFAULT とマージ（配列は指定時に置換） */
+export function mergeSettings(partial: Partial<AppSettings>): AppSettings {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...partial,
+    workdays: { ...DEFAULT_SETTINGS.workdays, ...(partial.workdays ?? {}) },
+    officeLatLng: { ...DEFAULT_SETTINGS.officeLatLng, ...(partial.officeLatLng ?? {}) },
+    individualHolidays: partial.individualHolidays ?? DEFAULT_SETTINGS.individualHolidays,
+    workerRankOptions: partial.workerRankOptions ?? DEFAULT_SETTINGS.workerRankOptions,
+    reminderDaysBefore: partial.reminderDaysBefore ?? DEFAULT_SETTINGS.reminderDaysBefore,
+    inviteStatusesAsFree: partial.inviteStatusesAsFree ?? DEFAULT_SETTINGS.inviteStatusesAsFree,
+  };
 }
