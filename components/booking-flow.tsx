@@ -478,7 +478,11 @@ function ScheduleStep({
           badge: i === 0 ? "🌟 最短対応可能日" : undefined,
         }));
         setRecommended(rec);
-        setCalendarDays(buildCalendarFromApi(data.days as ApiDay[]));
+        // TimeRex: 最短の空き日を先頭に。それより前の空き0日は出さない
+        const built = buildCalendarFromApi(data.days as ApiDay[]);
+        const firstAvail = built.findIndex((d) => d.slots.length > 0);
+        setCalendarDays(firstAvail < 0 ? [] : built.slice(firstAvail));
+        setFirstDay(0);
         const hours = (data.meta?.workHours as string[] | undefined)?.filter(Boolean);
         setWorkHours(hours && hours.length > 0 ? hours : HOURS);
       } catch (e) {
@@ -605,8 +609,14 @@ function ScheduleStep({
 
         {open && (
           <div id="calendar-panel" className="border-t-2 border-slate-100 p-4">
+            {calendarDays.length === 0 ? (
+              <p className="py-8 text-center text-base font-bold text-slate-700">
+                予約可能な日時がありません
+              </p>
+            ) : (
+              <>
             <p className="mb-3 text-sm text-slate-600">
-              ご都合のよい時間をタップしてください。色のついた枠が空いている時間です。「次へ」で最大探索日数分まで進めます。
+              最短の空き日から表示しています。色のついた枠をタップしてください。「次へ」で先の日程も見られます。
             </p>
             <div className="mb-3 flex items-center justify-between gap-2">
               <button
@@ -635,7 +645,7 @@ function ScheduleStep({
             </div>
 
             {days.length === 0 ? (
-              <p className="py-6 text-center text-sm text-slate-600">表示できる空き日程がありません。</p>
+              <p className="py-6 text-center text-base font-bold text-slate-700">予約可能な日時がありません</p>
             ) : (
               <div
                 className="grid gap-1.5"
@@ -688,6 +698,8 @@ function ScheduleStep({
                   </Fragment>
                 ))}
               </div>
+            )}
+              </>
             )}
           </div>
         )}
