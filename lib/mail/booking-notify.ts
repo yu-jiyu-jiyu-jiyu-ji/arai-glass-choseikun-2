@@ -63,22 +63,21 @@ export async function sendBookingNotifications(booking: Booking): Promise<MailNo
     .filter(Boolean)
     .join("\n");
 
-  await Promise.all(
-    assigned.map(async (w) => {
-      try {
-        await sendMail({
-          to: w.googleEmail,
-          subject: `【調整君】新規予約 ${booking.name}様 / ${formatVisit(booking.start)}`,
-          text: `${w.name} さん\n\n新しい訪問調査予約が入りました。\n\n${summary}\n`,
-        });
-        result.staff.push({ workerId: w.id, to: w.googleEmail, ok: true });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error(`[mail] staff notify failed ${w.id}`, e);
-        result.staff.push({ workerId: w.id, to: w.googleEmail, ok: false, error: msg });
-      }
-    }),
-  );
+  // 並列だと Render→Gmail で接続が詰まりやすいので順次送信
+  for (const w of assigned) {
+    try {
+      await sendMail({
+        to: w.googleEmail,
+        subject: `【調整君】新規予約 ${booking.name}様 / ${formatVisit(booking.start)}`,
+        text: `${w.name} さん\n\n新しい訪問調査予約が入りました。\n\n${summary}\n`,
+      });
+      result.staff.push({ workerId: w.id, to: w.googleEmail, ok: true });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[mail] staff notify failed ${w.id}`, e);
+      result.staff.push({ workerId: w.id, to: w.googleEmail, ok: false, error: msg });
+    }
+  }
 
   if (!booking.email?.trim()) return result;
 
