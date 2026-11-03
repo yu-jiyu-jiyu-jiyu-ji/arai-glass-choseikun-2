@@ -24,7 +24,7 @@ export async function POST(req: Request) {
 
 async function handle(req: Request) {
   if (!authorized(req)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "認証に失敗しました" }, { status: 401 });
   }
   const url = new URL(req.url);
   const force = url.searchParams.get("force") === "1";
